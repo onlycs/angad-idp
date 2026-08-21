@@ -1,0 +1,56 @@
+// Folder-specific settings
+//
+// For a full list of overridable settings, and general information on folder-specific settings,
+// see the documentation: https://zed.dev/docs/configuring-zed#settings-files
+{
+    "tab_size": 4,
+    "languages": {
+        "TypeScript": {
+            "formatter": "prettier"
+        },
+        "Vue.js": {
+            "formatter": "prettier"
+        },
+        "CSS": {
+            "language_servers": [
+                "tailwindcss-intellisense-css",
+                "!vscode-css-language-server"
+            ],
+            "formatter": "prettier"
+        },
+        "Markdown": {
+            "formatter": "prettier"
+        },
+        "YAML": {
+            "formatter": "prettier"
+        },
+        "SQL": {
+            "tab_size": 4
+        }
+    },
+    "lsp": {
+        "tailwindcss-language-server": {
+            "settings": {
+                "includeLanguages": {
+                    "vue": "html"
+                },
+                "classFunctions": ["cn"],
+                "experimental": {
+                    "classRegex": [
+                        "class=\"([^\"]*)\"",
+                        "class='([^']*)'",
+                        ":class=\"([^\"]*)\"",
+                        ":class='([^']*)'"
+                    ]
+                }
+            }
+        },
+        "rust-analyzer": {
+            "initialization_options": {
+                "check": {
+                    "command": "clippy"
+                }
+            }
+        }
+    }
+}
