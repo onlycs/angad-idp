@@ -1,6 +1,0 @@
-@import "tailwindcss";
-
-@import "tailwindcss/theme" theme(reference);
-@import "tailwindcss/utilities" utilities(reference);
-
-@config "../../tailwind.config.ts";

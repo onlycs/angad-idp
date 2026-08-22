@@ -1,12 +1,10 @@
 {
     "$schema": "http://json.schemastore.org/prettierrc",
     "tabWidth": 4,
-    "plugins": [
-        "prettier-plugin-organize-imports",
-        "prettier-plugin-tailwindcss"
-    ],
-    "tailwindStylesheet": "app/style/tailwind.css",
+    "plugins": ["prettier-plugin-organize-imports", "prettier-plugin-tailwindcss"],
+    "tailwindStylesheet": "app/style/main.css",
     "tailwindFunctions": ["cn"],
+    "printWidth": 100,
     "overrides": [
         {
             "files": ["*.yml", "*.yaml"],

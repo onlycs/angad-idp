@@ -45,9 +45,7 @@ function init(): Promise<void> {
             await auth_crypto.default("/wasm/auth_crypto_bg.wasm");
 
             try {
-                await auth_crypto.initThreadPool(
-                    navigator.hardwareConcurrency || 4,
-                );
+                await auth_crypto.initThreadPool(navigator.hardwareConcurrency || 4);
             } catch (e) {
                 console.error("Failed to initialize thread pool:", e);
                 console.warn("Assuming pool is already initialized");

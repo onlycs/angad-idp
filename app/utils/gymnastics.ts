@@ -8,16 +8,14 @@ export type {
 
 import type { Narrow, RequiredKeys } from "@zodios/core/lib/utils.types";
 
-export type UnionToIntersection<U> = (
-    U extends never ? never : (k: U) => void
-) extends (k: infer I) => void
+export type UnionToIntersection<U> = (U extends never ? never : (k: U) => void) extends (
+    k: infer I,
+) => void
     ? I
     : never;
 
 export type LastOf<U> =
-    UnionToIntersection<U extends never ? never : (x: U) => void> extends (
-        x: infer L,
-    ) => void
+    UnionToIntersection<U extends never ? never : (x: U) => void> extends (x: infer L) => void
         ? L
         : never;
 
@@ -25,24 +23,20 @@ export type UnionToTuple<T, L = LastOf<T>> = [T] extends [never]
     ? []
     : [...UnionToTuple<Exclude<T, L>>, L];
 
-export type BuildTuple<
-    N extends number,
-    R extends unknown[] = [],
-> = R["length"] extends N ? R : BuildTuple<N, [...R, unknown]>;
+export type BuildTuple<N extends number, R extends unknown[] = []> = R["length"] extends N
+    ? R
+    : BuildTuple<N, [...R, unknown]>;
 
 export type Subtract<A extends number, B extends number> =
     BuildTuple<A> extends [...infer U, ...BuildTuple<B>] ? U["length"] : never;
 
-export type LessThan<
-    N extends number,
-    R extends unknown[] = [],
-> = R["length"] extends N ? never : R["length"] | LessThan<N, [...R, unknown]>;
+export type LessThan<N extends number, R extends unknown[] = []> = R["length"] extends N
+    ? never
+    : R["length"] | LessThan<N, [...R, unknown]>;
 
-export type FixedArray<
-    T,
-    N extends number,
-    R extends T[] = [],
-> = R["length"] extends N ? R : FixedArray<T, N, [...R, T]>;
+export type FixedArray<T, N extends number, R extends T[] = []> = R["length"] extends N
+    ? R
+    : FixedArray<T, N, [...R, T]>;
 
 export type CountKeys<T> = UnionToTuple<keyof T>["length"];
 
@@ -52,23 +46,16 @@ export type FilteredKeys<T, V> = {
 
 export type FilteredObject<T, V> = Pick<T, FilteredKeys<T, V>>;
 
-export type DisplayKeys<T> = FilteredKeys<
-    T,
-    string | boolean | number | null | undefined
->;
+export type DisplayKeys<T> = FilteredKeys<T, string | boolean | number | null | undefined>;
 
-export type Optionalize<T, K extends keyof T> = Omit<T, K> &
-    Partial<Pick<T, K>>;
+export type Optionalize<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
 
 export type SemiPartial<T, K extends keyof T> = Partial<Pick<T, K>>;
-export type UndefinedIfOptional<T> =
-    RequiredKeys<T> extends never ? undefined : T;
+export type UndefinedIfOptional<T> = RequiredKeys<T> extends never ? undefined : T;
 export type OptionalKeys<T> = Exclude<keyof T, RequiredKeys<T>>;
 
 export type Prettify<T> = { [K in keyof T]: T[K] } & {};
-export type Merge<A, B> = Prettify<
-    Pick<A, keyof A> & Pick<B, Exclude<keyof B, keyof A>>
->;
+export type Merge<A, B> = Prettify<Pick<A, keyof A> & Pick<B, Exclude<keyof B, keyof A>>>;
 
 export type ValueIntersection<T> =
     {
@@ -121,9 +108,7 @@ export function narrow<T>(a: Narrow<T>): Narrow<T> {
  */
 export function safeassign<T extends object>(a: T, ...bs: Partial<T>[]): T {
     const safeBs = bs.map((b) =>
-        Object.fromEntries(
-            Object.entries(b).filter(([_, v]) => v !== undefined),
-        ),
+        Object.fromEntries(Object.entries(b).filter(([_, v]) => v !== undefined)),
     );
     return Object.assign({}, a, ...safeBs) as T;
 }
@@ -143,9 +128,7 @@ export function safeassign<T extends object>(a: T, ...bs: Partial<T>[]): T {
  */
 export function safemut<T extends object>(a: T, ...bs: Partial<T>[]): T {
     const safeBs = bs.map((b) =>
-        Object.fromEntries(
-            Object.entries(b).filter(([_, v]) => v !== undefined),
-        ),
+        Object.fromEntries(Object.entries(b).filter(([_, v]) => v !== undefined)),
     );
     return Object.assign(a, ...safeBs) as T;
 }
@@ -192,9 +175,7 @@ export function null2undefined(a: any): any {
  * @param f function to wrap
  * @returns a function that returns null if the input is null or undefined
  */
-export function ornull<T, K>(
-    f: (a: T) => K,
-): (a: T | null | undefined) => K | null {
+export function ornull<T, K>(f: (a: T) => K): (a: T | null | undefined) => K | null {
     return (a: T | null | undefined) => {
         if (a === null || a === undefined) return null;
         return f(a);

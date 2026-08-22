@@ -1,6 +1,6 @@
 SHELL := bash
 
-.PHONY: all wasm grpc fmt typegen postinstall
+.PHONY: all wasm grpc fmt palette typegen postinstall
 
 all: build
 
@@ -22,6 +22,10 @@ fmt:
 	cd src-api && cargo fmt
 	cd src-crypto && cargo fmt
 
+palette:
+	@echo "=== Generating palette"
+	bun scripts/palette.ts
+
 typegen:
 	@echo "=== Generating TypeScript types"
 	bunx nuxi prepare
@@ -36,4 +40,4 @@ build:
 	@echo "=== Building frontend"
 	bun generate
 
-postinstall: grpc wasm fmt typegen
+postinstall: grpc wasm palette fmt typegen

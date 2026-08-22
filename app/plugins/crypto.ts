@@ -1,8 +1,4 @@
-import type {
-    CryptoFunction,
-    WorkerMessage,
-    WorkerResponse,
-} from "~/workers/auth-crypto.ts";
+import type { CryptoFunction, WorkerMessage, WorkerResponse } from "~/workers/auth-crypto.ts";
 
 type CryptoJs = typeof import("../../public/wasm/auth_crypto");
 type Awaited<R> = R extends Promise<infer T> ? T : R;
@@ -16,15 +12,13 @@ type AsyncCryptoModule = {
 
 export class CryptoWorker {
     private worker: Worker;
-    private pending: Map<number, { resolve: Function; reject: Function }> =
-        new Map();
+    private pending: Map<number, { resolve: Function; reject: Function }> = new Map();
     private id = 0;
 
     constructor(oninit: (fns: CryptoFunction[]) => void) {
-        this.worker = new Worker(
-            new URL("../workers/auth-crypto.ts", import.meta.url),
-            { type: "module" },
-        );
+        this.worker = new Worker(new URL("../workers/auth-crypto.ts", import.meta.url), {
+            type: "module",
+        });
 
         this.worker.onerror = (error) => {
             console.error("Worker error:", error);
@@ -56,9 +50,7 @@ export class CryptoWorker {
 
     async execute<K extends CryptoFunction>(
         message: Omit<WorkerMessage<K>, "id">,
-    ): Promise<
-        CryptoJs[K] extends (...args: infer _P) => infer R ? Awaited<R> : never
-    > {
+    ): Promise<CryptoJs[K] extends (...args: infer _P) => infer R ? Awaited<R> : never> {
         return new Promise((resolve, reject) => {
             this.pending.set(this.id, { resolve, reject });
             this.worker.postMessage({ id: this.id++, ...message });

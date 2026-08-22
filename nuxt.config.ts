@@ -3,9 +3,9 @@ import tailwind from "@tailwindcss/vite";
 export default defineNuxtConfig({
     app: {
         head: {
-            title: "Attendance",
+            title: "Angad Auth",
             htmlAttrs: {
-                class: "dark",
+                "data-carbon-theme": "g90",
             },
             link: [{ rel: "icon", type: "image/png", href: "/favicon.png" }],
             meta: [
@@ -30,7 +30,7 @@ export default defineNuxtConfig({
     devtools: { enabled: false },
     modules: ["@nuxt/icon", "@vueuse/nuxt"],
     pages: true,
-    css: ["~/style/tailwind.css"],
+    css: ["~/style/carbon.scss", "~/style/main.css"],
     postcss: {
         plugins: {
             autoprefixer: {},
@@ -43,14 +43,8 @@ export default defineNuxtConfig({
                 name: "headers",
                 configureServer(server) {
                     server.middlewares.use((req, res, next) => {
-                        res.setHeader(
-                            "Cross-Origin-Embedder-Policy",
-                            "require-corp",
-                        );
-                        res.setHeader(
-                            "Cross-Origin-Opener-Policy",
-                            "same-origin",
-                        );
+                        res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+                        res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
                         next();
                     });
                 },
