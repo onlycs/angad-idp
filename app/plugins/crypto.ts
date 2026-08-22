@@ -1,7 +1,18 @@
-import type { WorkerMessage } from "~/workers/auth-crypto.ts";
+import type {
+    CryptoFunction,
+    WorkerMessage,
+    WorkerResponse,
+} from "~/workers/auth-crypto.ts";
 
 type CryptoJs = typeof import("../../public/wasm/auth_crypto");
 type Awaited<R> = R extends Promise<infer T> ? T : R;
+type AsyncCryptoModule = {
+    [K in CryptoFunction]: (
+        ...args: Parameters<CryptoJs[K]>
+    ) => Promise<Awaited<ReturnType<CryptoJs[K]>>>;
+} & {
+    worker: CryptoWorker;
+};
 
 export class CryptoWorker {
     private worker: Worker;
@@ -9,7 +20,7 @@ export class CryptoWorker {
         new Map();
     private id = 0;
 
-    constructor() {
+    constructor(oninit: (fns: CryptoFunction[]) => void) {
         this.worker = new Worker(
             new URL("../workers/auth-crypto.ts", import.meta.url),
             { type: "module" },
@@ -23,9 +34,8 @@ export class CryptoWorker {
             console.error("Worker message error:", error);
         };
 
-        this.worker.onmessage = (
-            event: MessageEvent<{ id: number; result: any }>,
-        ) => {
+        this.worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
+            if (!event.data) return;
             const { id, result } = event.data;
             const pending = this.pending.get(id);
             if (pending) {
@@ -35,13 +45,16 @@ export class CryptoWorker {
         };
 
         this.pending.set(-1, {
-            resolve: console.log,
+            resolve: (module: CryptoFunction[]) => {
+                oninit(module);
+                console.log("Worker initialized!");
+            },
             reject: () => {},
         });
         this.worker.postMessage("init");
     }
 
-    async execute<K extends keyof CryptoJs>(
+    async execute<K extends CryptoFunction>(
         message: Omit<WorkerMessage<K>, "id">,
     ): Promise<
         CryptoJs[K] extends (...args: infer _P) => infer R ? Awaited<R> : never
@@ -59,26 +72,18 @@ export class CryptoWorker {
 }
 
 export default defineNuxtPlugin(async () => {
-    const worker = new CryptoWorker();
+    let oninit: (fns: CryptoFunction[]) => void = () => {};
+    const futureFns = new Promise<CryptoFunction[]>((res, _) => (oninit = res));
 
-    // prettier-ignore
+    const worker = new CryptoWorker(oninit);
+    const fns = await futureFns;
+    const mod = { worker } as any;
+
+    for (const fn of fns) {
+        mod[fn] = async (...args: any) => worker.execute({ fn, args } as any);
+    }
+
     return {
-        provide: {
-            crypto: {
-                worker, // this may gc itself- idfk how js works
-                k1: {
-                    encrypt: (ptxt: Uint8Array, psk: string) => worker.execute({ operation: "k1_encrypt", args: [ptxt, psk] }),
-                    decrypt: (ctxt: string, psk: string) => worker.execute({ operation: "k1_decrypt", args: [ctxt, psk] }),
-                },
-                invite: {
-                    encryptk1: (k1: Uint8Array, k2: Uint8Array) => worker.execute({ operation: "k1_key_encrypt", args: [k1, k2] }),
-                    decryptk1: (ctxt: string, k2: Uint8Array) => worker.execute({ operation: "k1_key_decrypt", args: [ctxt, k2] }),
-                },
-                encrypt: <T extends string[]>(ptxt: Narrow<T>, psk: Uint8Array): Promise<T | undefined> => worker.execute({ operation: "encrypt", args: [ptxt, psk] }) as any,
-                decrypt: <T extends string[]>(ctxt: Narrow<T>, psk: Uint8Array): Promise<T | undefined> => worker.execute({ operation: "decrypt", args: [ctxt, psk] }) as any,
-                random_bytes: (len: number) => worker.execute({ operation: "random_bytes", args: [len] }),
-                totp: (secret: string) => worker.execute({ operation: "totp_generate", args: [secret] }),
-            },
-        },
+        provide: { crypto: mod as AsyncCryptoModule },
     };
 });
