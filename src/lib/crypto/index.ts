@@ -1,6 +1,6 @@
-import type { CryptoFunction, WorkerMessage, WorkerResponse } from "~/workers/auth-crypto.ts";
+import type { CryptoFunction, WorkerMessage, WorkerResponse } from "$lib/crypto/worker";
 
-type CryptoJs = typeof import("../../public/wasm/auth_crypto");
+type CryptoJs = typeof import("$wasm/crypto");
 type Awaited<R> = R extends Promise<infer T> ? T : R;
 type AsyncCryptoModule = {
     [K in CryptoFunction]: (
@@ -15,7 +15,7 @@ export class CryptoWorker {
     private pending: Map<number, { resolve: Function; reject: Function }> = new Map();
     private id = 0;
 
-    constructor(oninit: (fns: CryptoFunction[]) => void) {
+    constructor(oninit: (fns: CryptoFunction[]) => void = () => {}) {
         this.worker = new Worker(new URL("../workers/auth-crypto.ts", import.meta.url), {
             type: "module",
         });
@@ -63,19 +63,22 @@ export class CryptoWorker {
     }
 }
 
-export default defineNuxtPlugin(async () => {
-    let oninit: (fns: CryptoFunction[]) => void = () => {};
-    const futureFns = new Promise<CryptoFunction[]>((res, _) => (oninit = res));
+let instance: AsyncCryptoModule | undefined;
 
-    const worker = new CryptoWorker(oninit);
-    const fns = await futureFns;
-    const mod = { worker } as any;
-
-    for (const fn of fns) {
-        mod[fn] = async (...args: any) => worker.execute({ fn, args } as any);
+export function getCrypto(): AsyncCryptoModule {
+    if (!instance) {
+        const worker = new CryptoWorker();
+        instance = new Proxy(
+            { worker },
+            {
+                get(target, prop) {
+                    if (prop == "worker") return target.worker;
+                    if (typeof prop != "string") return undefined;
+                    return (...args: any) => worker.execute({ fn: prop, args } as any);
+                },
+            },
+        ) as AsyncCryptoModule;
     }
 
-    return {
-        provide: { crypto: mod as AsyncCryptoModule },
-    };
-});
+    return instance;
+}

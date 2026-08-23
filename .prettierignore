@@ -4,3 +4,6 @@ src-crypto/**
 
 # filetypes
 **/*.toml
+
+bun.lock
+bun.lockb

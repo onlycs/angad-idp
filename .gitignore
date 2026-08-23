@@ -1,30 +1,28 @@
-.direnv
-.postgres
-**/target
-
-# Nuxt dev/build outputs
-.output
-.data
-.nuxt
-.nitro
-.cache
-dist
-
-# Node dependencies
 node_modules
 
-# Logs
-logs
-*.log
+# Output
+.output
+.vercel
+.netlify
+.wrangler
+/.svelte-kit
+/build
 
-# Misc
+# OS
 .DS_Store
-.fleet
-.idea
+Thumbs.db
 
-# Local env files
+# Env
 .env
 .env.*
 !.env.example
+!.env.test
 
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+.direnv
+.postgres
+**/target
 app/style/palette.css

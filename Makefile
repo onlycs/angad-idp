@@ -1,17 +1,18 @@
 SHELL := bash
 
-.PHONY: all wasm grpc fmt palette typegen postinstall
+.PHONY: all wasm grpc fmt palette postinstall
 
 all: build
 
 wasm:
 	@echo "=== Building WASM package"
-	cd src-crypto && rm -rf pkg && wasm-pack build --target web --release
+	cd src-crypto && rm -rf pkg && wasm-pack build --target web --release --out-name crypto
 	@echo "=== Copying package files"
-	rm -rf public/wasm
-	cp -r src-crypto/pkg public/wasm
+	rm -rf static/wasm
+	mkdir -p static
+	cp -r src-crypto/pkg static/wasm
 	@echo "=== Patching workerHelpers.js files"
-	sed -i 's|\.\./\.\./\.\.|../../../auth_crypto.js|g' public/wasm/snippets/*/src/workerHelpers.js
+	sed -i 's|\.\./\.\./\.\.|../../../crypto.js|g' static/wasm/snippets/*/src/workerHelpers.js
 
 grpc:
 	@echo "=== TODO (grpc)"
@@ -26,10 +27,6 @@ palette:
 	@echo "=== Generating palette"
 	bun scripts/palette.ts
 
-typegen:
-	@echo "=== Generating TypeScript types"
-	bunx nuxi prepare
-
 build:
 	@echo "=== Building the API"
 	cd src-api && cargo build --release
@@ -40,4 +37,4 @@ build:
 	@echo "=== Building frontend"
 	bun generate
 
-postinstall: grpc wasm palette fmt typegen
+postinstall: grpc wasm palette

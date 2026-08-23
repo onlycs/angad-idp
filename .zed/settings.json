@@ -12,10 +12,7 @@
             "formatter": "prettier"
         },
         "CSS": {
-            "language_servers": [
-                "tailwindcss-intellisense-css",
-                "!vscode-css-language-server"
-            ],
+            "language_servers": ["tailwindcss-intellisense-css", "!vscode-css-language-server"],
             "formatter": "prettier"
         },
         "Markdown": {
