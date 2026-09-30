@@ -4,6 +4,9 @@
 #[cfg(all(target_family = "wasm", feature = "uniffi"))]
 compile_error!("`wasm32` is not compatible with `uniffi`");
 
+#[cfg(all(target_family = "wasm", feature = "server"))]
+compile_error!("`wasm32` is not compatible with `server`");
+
 #[cfg(feature = "uniffi")]
 uniffi::setup_scaffolding!("transit");
 
@@ -14,6 +17,9 @@ mod arch;
 
 #[cfg(feature = "client")]
 pub mod client;
+
+#[cfg(feature = "server")]
+pub mod server;
 
 pub mod frame;
 

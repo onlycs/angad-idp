@@ -1,30 +1,22 @@
-#[cfg(feature = "client")]
-use std::time::Duration;
-use std::{io, mem, sync::Arc};
+use std::{io, mem, sync::Arc, time::Duration};
 
 use snafu::{Location, ResultExt, Snafu};
-#[cfg(feature = "server")]
-use tokio::io::AsyncWrite;
 use tokio::{
-    io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
-    sync::Mutex,
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
+    sync::{Mutex, mpsc::UnboundedReceiver},
 };
-#[cfg(feature = "client")]
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
-#[cfg(feature = "client")]
-use super::client::Registry;
-#[cfg(feature = "client")]
-use crate::arch::{self, TransitInner};
-
-const MSGID_LEN: usize = 16;
+pub const MAX_FRAME_LEN: usize = 5 * 1024 * 1024; // 5 MiB is more than enough
+pub const MSGID_LEN: usize = 16;
 
 pub type FrameLen = u32;
 pub type RouteId = u64;
 pub type MessageId = [u8; MSGID_LEN];
 
-const MAX_FRAME_LEN: usize = 5 * 1024 * 1024; // 5 MiB is more than enough
+#[cfg(feature = "client")]
+use crate::{arch, client};
 
 // useful:
 // response (p): {frame len}{message id}{data bytes}
@@ -32,32 +24,6 @@ const MAX_FRAME_LEN: usize = 5 * 1024 * 1024; // 5 MiB is more than enough
 
 #[derive(Snafu, Debug)]
 pub enum FrameError {
-    #[snafu(display("Failed to read"))]
-    Read {
-        source: io::Error,
-        #[snafu(implicit)]
-        location: Location,
-    },
-
-    #[snafu(display("Failed to write"))]
-    Write {
-        source: io::Error,
-        #[snafu(implicit)]
-        location: Location,
-    },
-
-    #[snafu(display("Write timeout"))]
-    WriteTimeout {
-        #[snafu(implicit)]
-        location: Location,
-    },
-
-    #[snafu(display("Connection closed"))]
-    Closed {
-        #[snafu(implicit)]
-        location: Location,
-    },
-
     #[snafu(display("Frame too long (refusing to allocate {size:.2}MiB)"))]
     FrameTooLong {
         size: f32,
@@ -71,23 +37,34 @@ pub enum FrameError {
         #[snafu(implicit)]
         location: Location,
     },
+}
 
-    #[snafu(display("Failed to join thread"))]
-    Join {
-        source: arch::JoinError,
+#[derive(Snafu, Debug)]
+pub(super) enum FrameIOError {
+    #[snafu(display("{source}"))]
+    Frame {
+        source: FrameError,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Failed to read"))]
+    Read {
+        source: io::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Write timeout"))]
+    Write {
         #[snafu(implicit)]
         location: Location,
     },
 }
 
-#[cfg(feature = "client")]
-pub(super) fn closed() -> FrameError {
-    ClosedSnafu.build()
-}
-
 pub(super) async fn frame_decode<R: AsyncRead + Unpin>(
     reader: &mut R,
-) -> Result<Vec<u8>, FrameError> {
+) -> Result<Vec<u8>, FrameIOError> {
     let mut len_buf = [0u8; size_of::<FrameLen>()];
     reader.read_exact(&mut len_buf).await.context(ReadSnafu)?;
 
@@ -96,7 +73,8 @@ pub(super) async fn frame_decode<R: AsyncRead + Unpin>(
         return Err(FrameTooLongSnafu {
             size: len as f32 / 1024f32 / 1024f32,
         }
-        .build());
+        .build())
+        .context(FrameSnafu);
     }
 
     let mut msg_buf = vec![0u8; len];
@@ -106,13 +84,11 @@ pub(super) async fn frame_decode<R: AsyncRead + Unpin>(
 }
 
 #[cfg(feature = "client")]
-pub(super) async fn qframe_encode(
-    transit: Arc<Mutex<TransitInner>>,
-    notify: CancellationToken,
+pub(super) fn qframe_encode(
     msgid: MessageId,
     route: RouteId,
     data: Vec<u8>,
-) -> Result<(), FrameError> {
+) -> Result<Vec<u8>, FrameError> {
     let len = msgid.len() + mem::size_of_val(&route) + data.len();
     if len > MAX_FRAME_LEN {
         return Err(FrameTooLongSnafu {
@@ -123,48 +99,21 @@ pub(super) async fn qframe_encode(
 
     let len_bytes = (len as FrameLen).to_le_bytes();
     let route_bytes = route.to_le_bytes();
+    let mut buf = Vec::with_capacity(len);
 
-    let mut transit = transit.lock_owned().await; // allow this to cancel
-    arch::spawn(async move {
-        let writer = transit.as_async_write();
+    buf.extend(len_bytes);
+    buf.extend(&msgid);
+    buf.extend(&route_bytes);
+    buf.extend(&data);
 
-        if notify.is_cancelled() {
-            return Err(ClosedSnafu.build());
-        }
-
-        match arch::timeout(Duration::from_secs(30), async {
-            writer.write_all(&len_bytes).await.context(WriteSnafu)?;
-            writer.write_all(&msgid).await.context(WriteSnafu)?;
-            writer.write_all(&route_bytes).await.context(WriteSnafu)?;
-            writer.write_all(&data).await.context(WriteSnafu)?;
-            Ok::<_, FrameError>(())
-        })
-        .await
-        {
-            Err(_) => {
-                notify.cancel();
-                Err(WriteTimeoutSnafu.build())
-            }
-            Ok(Err(error)) => {
-                notify.cancel();
-                Err(error)
-            }
-            Ok(Ok(_)) => Ok(()),
-        }
-    })
-    .await
-    .context(JoinSnafu)??;
-
-    Ok(())
+    Ok(buf)
 }
 
 #[cfg(feature = "server")]
-pub(super) async fn pframe_encode<W: AsyncWrite + Unpin>(
-    writer: &mut W,
-    msgid: &MessageId,
-    data: &[u8],
-) -> Result<(), FrameError> {
+pub(super) fn pframe_encode(msgid: &MessageId, data: &[u8]) -> Result<Vec<u8>, FrameError> {
     let len = msgid.len() + data.len();
+    let len_bytes = (len as FrameLen).to_le_bytes();
+
     if len > MAX_FRAME_LEN {
         return Err(FrameTooLongSnafu {
             size: len as f32 / 1024f32 / 1024f32,
@@ -172,13 +121,12 @@ pub(super) async fn pframe_encode<W: AsyncWrite + Unpin>(
         .build());
     }
 
-    let len_bytes = (len as FrameLen).to_le_bytes();
+    let mut buf = Vec::with_capacity(len);
+    buf.extend(len_bytes);
+    buf.extend(msgid);
+    buf.extend(data);
 
-    writer.write_all(&len_bytes).await.context(WriteSnafu)?;
-    writer.write_all(msgid).await.context(WriteSnafu)?;
-    writer.write_all(data).await.context(WriteSnafu)?;
-
-    Ok(())
+    Ok(buf)
 }
 
 #[cfg(feature = "client")]
@@ -191,7 +139,7 @@ pub(super) fn gen_msgid() -> Result<MessageId, FrameError> {
 #[cfg(feature = "client")]
 pub(super) async fn pframe_deocde_thread<R: AsyncRead + Unpin + 'static>(
     mut reader: R,
-    tx: Arc<Mutex<Registry>>,
+    tx: Arc<Mutex<client::Registry>>,
     notify: CancellationToken,
 ) {
     let job = async {
@@ -230,5 +178,48 @@ pub(super) async fn pframe_deocde_thread<R: AsyncRead + Unpin + 'static>(
 
     if notify.run_until_cancelled(job).await.is_none() {
         warn!("Frame decode thread cancelled");
+    }
+}
+
+#[cfg(any(feature = "client", feature = "server"))]
+pub(super) async fn frame_encode_thread<W: AsyncWrite + Unpin + 'static>(
+    mut writer: W,
+    mut rx: UnboundedReceiver<Vec<u8>>,
+    notify: CancellationToken,
+) {
+    let job = async {
+        loop {
+            let frame = match rx.recv().await {
+                Some(frame) => frame,
+                None => {
+                    warn!("rx dropped, closing connection");
+                    notify.cancel();
+                    return;
+                }
+            };
+
+            if frame.len() < MSGID_LEN {
+                warn!("Frame less than minimum size, ignoring");
+                continue;
+            }
+
+            #[cfg(feature = "client")]
+            let timeout = arch::timeout;
+            #[cfg(all(not(feature = "client"), feature = "server"))]
+            let timeout = async |a, b| tokio::time::timeout(a, b).await.ok();
+
+            match timeout(Duration::from_secs(30), writer.write_all(&frame)).await {
+                Some(Ok(_)) => {}
+                _ => {
+                    warn!("Error writing frame, closing connection");
+                    notify.cancel();
+                    return;
+                }
+            }
+        }
+    };
+
+    if notify.run_until_cancelled(job).await.is_none() {
+        warn!("Frame encode thread cancelled");
     }
 }

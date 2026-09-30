@@ -1,10 +1,11 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use snafu::{IntoError, Location, prelude::*};
+use snafu::{Location, prelude::*};
 use tokio::{
     self,
     sync::{
-        Mutex, RwLock,
+        Mutex,
+        mpsc::{self, UnboundedSender, error::SendError},
         oneshot::{self, error::RecvError},
     },
 };
@@ -12,11 +13,11 @@ use tokio_util::sync::CancellationToken;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::prelude::*;
 
-use super::{
+use crate::{
+    Route,
     arch::{self, *},
     frame::{self, MessageId},
 };
-use crate::Route;
 
 #[derive(Snafu, Debug)]
 #[cfg_attr(target_family = "wasm", derive(strum::EnumDiscriminants))]
@@ -53,24 +54,21 @@ pub enum RouteError {
         location: Location,
     },
 
-    #[cfg(not(target_family = "wasm"))]
-    #[snafu(display("Tokio: join failed"))]
-    Join {
-        source: tokio::task::JoinError,
-        #[snafu(implicit)]
-        location: Location,
-    },
-
-    #[cfg(target_family = "wasm")]
-    #[snafu(display("Oneshot: recv failed"))]
-    Join {
-        source: oneshot::error::RecvError,
+    #[snafu(display("Send failed"))]
+    Send {
+        source: SendError<Vec<u8>>,
         #[snafu(implicit)]
         location: Location,
     },
 
     #[snafu(display("Request timeout"))]
     Timeout {
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Request closed"))]
+    Closed {
         #[snafu(implicit)]
         location: Location,
     },
@@ -151,103 +149,112 @@ impl TransitOptions {
 
 pub type Registry = HashMap<MessageId, oneshot::Sender<Vec<u8>>>;
 
+struct Connection {
+    _read: arch::JoinHandle<()>,
+    _write: arch::JoinHandle<()>,
+    write_tx: UnboundedSender<Vec<u8>>,
+
+    registry: Arc<Mutex<Registry>>,
+    closed: CancellationToken,
+}
+
+impl Connection {
+    async fn route<R: Route>(
+        &self,
+        q: R::Request,
+        id: MessageId,
+    ) -> Result<R::Response, RouteError> {
+        let data = bitcode::encode(&q);
+        let buf = frame::qframe_encode(id, R::ID, data).context(FrameSnafu)?;
+        let (tx, rx) = oneshot::channel();
+
+        let res = self
+            .closed
+            .run_until_cancelled(async move {
+                self.registry.lock().await.insert(id, tx);
+                self.write_tx.send(buf).context(SendSnafu)?;
+                rx.await.context(TxSnafu) // this is generally what is waited on, but wrap everything
+            })
+            .await
+            .ok_or_else(|| ClosedSnafu.build())??;
+
+        let res = bitcode::decode(&res).context(DecodeSnafu)?;
+
+        Ok(res)
+    }
+
+    async fn drop_tx(&self, id: MessageId) {
+        self.registry.lock().await.remove(&id);
+    }
+}
+
 #[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
 pub struct Transit {
-    inner: Arc<Mutex<TransitInner>>,
-    registry: Arc<Mutex<Registry>>,
+    connection: Mutex<Arc<Connection>>,
     options: TransitOptions,
-    cancel: RwLock<Arc<CancellationToken>>, // backwards??? holy.
-    reconnect: Mutex<()>,
 }
 
 impl Transit {
-    pub async fn route<R: Route>(&self, q: R::Request) -> Result<R::Response, RouteError> {
-        if self.cancel.read().await.is_cancelled() {
-            let lck = match self.reconnect.try_lock() {
-                Ok(lck) => lck,
-                Err(_) => {
-                    let _ = self.reconnect.lock().await;
-                    return Box::pin(self.route::<R>(q)).await;
-                }
-            };
+    async fn connection(&self) -> Result<Arc<Connection>, RouteError> {
+        let mut conn = self.connection.lock().await;
 
-            *self.registry.lock().await = Registry::new();
-            let notify = CancellationToken::default();
-
-            let inner = arch::timeout(
-                Duration::from_millis(self.options.timeout_ms),
-                arch::connect(
-                    &self.options.connect,
-                    Arc::clone(&self.registry),
-                    notify.clone(),
-                ),
-            )
-            .await
-            .map_err(|_| TimeoutSnafu.build())?
-            .context(ReconnectSnafu)?;
-
-            *self.inner.lock().await = inner;
-            *self.cancel.write().await = Arc::new(notify);
-
-            drop(lck);
+        if conn.closed.is_cancelled() {
+            *conn = Arc::new(_connect(&self.options).await.context(ReconnectSnafu)?);
         }
 
-        let cancel = self.cancel.read().await.as_ref().clone();
+        Ok(Arc::clone(&conn))
+    }
+
+    pub async fn route<R: Route>(&self, q: R::Request) -> Result<R::Response, RouteError> {
+        let conn = self.connection().await?;
         let id = frame::gen_msgid().context(FrameSnafu)?;
-        let data = bitcode::encode(&q);
         let timeout = Duration::from_millis(self.options.timeout_ms);
 
-        let (tx, rx) = oneshot::channel();
-        self.registry.lock().await.insert(id, tx);
-
-        let transmit = cancel.run_until_cancelled(async {
-            frame::qframe_encode(Arc::clone(&self.inner), cancel.clone(), id, R::ID, data)
-                .await
-                .context(FrameSnafu)?;
-
-            rx.await.context(TxSnafu)
-        });
-
-        // i love designing failure-safe code. it truly makes me happy.
-        let result = match arch::timeout(timeout, transmit).await {
-            // arch::timeout returns <transmit result, error when timed out>
-            Err(_) => Err(TimeoutSnafu.build()),
-
-            // transmit result is <actual result, None when cancelled>
-            Ok(None) => Err(FrameSnafu.into_error(frame::closed())),
-
-            // finally, the actual result (which may still be an error btw)
-            Ok(Some(result)) => result,
-        };
-
-        let res = match result {
-            Ok(data) => data,
+        match arch::timeout(timeout, conn.route::<R>(q, id))
+            .await
+            .ok_or_else(|| TimeoutSnafu.build())
+            .flatten()
+        {
+            Ok(data) => Ok(data),
             Err(err) => {
-                self.registry.lock().await.remove(&id);
-                return Err(err);
+                conn.drop_tx(id).await;
+                Err(err)
             }
-        };
-
-        bitcode::decode(&res).context(DecodeSnafu)
+        }
     }
+}
+
+async fn _connect(options: &TransitOptions) -> Result<Connection, ConnectError> {
+    let registry = Arc::new(Mutex::new(Registry::default()));
+    let notify = CancellationToken::default();
+    let (read, write) = arch::connect(&options.connect).await?;
+    let (tx, rx) = mpsc::unbounded_channel();
+
+    let rt = arch::spawn(frame::pframe_deocde_thread(
+        read,
+        Arc::clone(&registry),
+        notify.clone(),
+    ));
+
+    let wt = arch::spawn(frame::frame_encode_thread(write, rx, notify.clone()));
+
+    Ok(Connection {
+        _read: rt,
+        _write: wt,
+        write_tx: tx,
+
+        registry,
+        closed: notify,
+    })
 }
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
 #[cfg_attr(target_family = "wasm", allow(clippy::arc_with_non_send_sync))]
 pub async fn connect(options: TransitOptions) -> Result<Transit, ConnectError> {
-    let registry = Arc::new(Mutex::new(Registry::default()));
-    let notify = CancellationToken::default();
-    let inner = Arc::new(Mutex::new(
-        arch::connect(&options.connect, Arc::clone(&registry), notify.clone()).await?,
-    ));
-
     Ok(Transit {
-        inner,
-        registry,
+        connection: Mutex::new(Arc::new(_connect(&options).await?)),
         options,
-        cancel: RwLock::new(Arc::new(notify)),
-        reconnect: Mutex::new(()),
     })
 }

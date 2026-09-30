@@ -285,8 +285,7 @@ pub fn route(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
         quote! {
             pub struct #name;
             impl ::transit_core::Route for #name {
-                const ID: ::transit_core::frame::RouteId =
-                    ::xxhash_rust::const_xxh3::xxh3_64(stringify!(#name).as_bytes());
+                const ID: ::transit_core::frame::RouteId = ::xxhash_rust::const_xxh3::xxh3_64(stringify!(#name).as_bytes());
                 type Request = #request;
                 type Response = #response;
             }

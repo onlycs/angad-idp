@@ -4,13 +4,14 @@ version.workspace = true
 edition.workspace = true
 
 [features]
-default = ["client"]
+default = []
 uniffi = ["dep:uniffi", "client"]
 client = []
 server = []
 
 [dependencies]
 bitcode = "0.6.9"
+futures-util = "0.3.34"
 hex = "0.4.3"
 snafu = { version = "0.9.2", features = ["unstable-provider-api"] }
 tokio-util = "0.7.19"
@@ -18,8 +19,9 @@ tracing = "0.1.44"
 transit-macros = { version = "0.1.0", path = "../transit-macros" }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-rustls = { version = "0.23.45"  }
+rustls = { version = "0.23.45" }
 rustls-pemfile = { version = "2.2.0" }
+rustls-platform-verifier = "0.7.1"
 tokio-rustls = { version = "0.26.5" }
 uniffi = { version = "0.32.1", optional = true, features = ["cli"] }
 tokio = { version = "1.53.1", features = ["net", "sync", "rt", "io-util", "time"] }
@@ -29,12 +31,12 @@ getrandom = "0.4.3"
 gloo-timers = { version = "0.4.0", features = ["futures"] }
 js-sys = "0.3.105"
 serde = { version = "1.0", features = ["derive"] }
-serde-wasm-bindgen = "0.6.5"
+serde-wasm-bindgen = { version = "0.6.5" }
 tsify = { version = "0.5.8", default-features = false, features = ["js"] }
 xwt-core = "0.10.0"
 xwt-web = "0.22.1"
-wasm-bindgen = "0.2.128"
-wasm-bindgen-futures = "0.4.78"
+wasm-bindgen = { version = "0.2.128" }
+wasm-bindgen-futures = { version = "0.4.78" }
 strum = { version = "0.28.0", features = ["derive"] }
 tokio = { version = "1.53.1", features = ["sync", "io-util", "macros"] }
 getrandom = { version = "0.4.3", features = ["wasm_js"] }

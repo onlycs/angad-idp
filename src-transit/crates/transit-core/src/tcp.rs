@@ -1,17 +1,18 @@
 use std::{io::Cursor, sync::Arc, time::Duration};
 
 use rustls::{ClientConfig, RootCertStore, pki_types::ServerName};
+use rustls_platform_verifier::BuilderVerifierExt;
 use snafu::{Location, prelude::*};
 use tokio::{
-    io::{AsyncWrite, WriteHalf},
-    net::{TcpStream, tcp::OwnedWriteHalf},
-    sync::Mutex,
+    io::{ReadHalf, WriteHalf},
+    net::{
+        TcpStream,
+        tcp::{OwnedReadHalf, OwnedWriteHalf},
+    },
     time,
 };
 use tokio_rustls::{TlsConnector, TlsStream};
-use tokio_util::sync::CancellationToken;
-
-use super::client::Registry;
+use tokio_util::either::Either;
 
 #[derive(Snafu, Debug)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Error))]
@@ -26,6 +27,13 @@ pub enum ConnectError {
 
     #[snafu(display("Invalid certificate"))]
     RootCertAdd {
+        source: rustls::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Platform verifier error"))]
+    PlatformVerifier {
         source: rustls::Error,
         #[snafu(implicit)]
         location: Location,
@@ -58,32 +66,14 @@ pub enum ConnectError {
     },
 }
 
-pub(super) enum TransitInner {
-    Raw(OwnedWriteHalf),
-    Rustls(WriteHalf<TlsStream<TcpStream>>),
-}
+pub type Reader = Either<OwnedReadHalf, ReadHalf<TlsStream<TcpStream>>>;
+pub type Writer = Either<OwnedWriteHalf, WriteHalf<TlsStream<TcpStream>>>;
 
-impl TransitInner {
-    // dyn AsyncBufWrite
-    //  + oh no it depends on unpin
-    //  + Unpin
-    //  + fuck you it's AsyncWrite
-    //  + oh no i forgot sendsync
-    //  + Send
-    //  + Sync
-    //  + fuck you, apparently types have lifetimes
-    //  + 'static
-    //  + *now* it works
-    //
-    // there should be a normal trait where i can just dyn T + Normal and it
-    // satisfies the trait bounds for like, normal objects that I'm not fucking
-    // around with
-    pub fn as_async_write(&mut self) -> &mut (dyn AsyncWrite + Send + Sync + Unpin + 'static) {
-        match self {
-            Self::Raw(half) => half,
-            Self::Rustls(half) => half,
-        }
-    }
+#[derive(Clone)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+pub enum Tls {
+    Internal,
+    Bytes(Vec<u8>),
 }
 
 #[derive(Clone)]
@@ -91,36 +81,41 @@ impl TransitInner {
 pub struct ConnectOptions {
     pub addr: String,
     pub port: u16,
-    pub crt: Option<Vec<u8>>,
+    pub crt: Option<Tls>,
 }
 
 pub(super) async fn connect(
     ConnectOptions { addr, port, crt }: &ConnectOptions,
-    tx: Arc<Mutex<Registry>>,
-    notify: CancellationToken,
-) -> Result<TransitInner, ConnectError> {
+) -> Result<(Reader, Writer), ConnectError> {
     let port = *port;
 
     let raw = TcpStream::connect(format!("{addr}:{port}"))
         .await
         .context(TcpStreamConnectSnafu { addr, port })?;
 
-    if let Some(crt) = crt {
-        let mut ca = Cursor::new(crt);
-        let mut roots = RootCertStore::empty();
+    if let Some(tls) = crt {
+        let config = match tls {
+            Tls::Bytes(crt) => {
+                let mut ca = Cursor::new(crt);
+                let mut roots = RootCertStore::empty();
 
-        for cert in rustls_pemfile::certs(&mut ca) {
-            roots
-                .add(cert.context(RootCertParseSnafu)?)
-                .context(RootCertAddSnafu)?;
-        }
+                for cert in rustls_pemfile::certs(&mut ca) {
+                    roots
+                        .add(cert.context(RootCertParseSnafu)?)
+                        .context(RootCertAddSnafu)?;
+                }
 
-        let config = ClientConfig::builder()
-            .with_root_certificates(roots)
-            .with_no_client_auth();
+                ClientConfig::builder()
+                    .with_root_certificates(roots)
+                    .with_no_client_auth()
+            }
+            Tls::Internal => ClientConfig::builder()
+                .with_platform_verifier()
+                .context(PlatformVerifierSnafu)?
+                .with_no_client_auth(),
+        };
 
         let connector = TlsConnector::from(Arc::new(config));
-
         let server_name = ServerName::try_from(addr.as_str()).context(DNSNameSnafu { addr })?;
 
         let tls = connector
@@ -130,27 +125,23 @@ pub(super) async fn connect(
             .into();
 
         let (read, write) = tokio::io::split(tls);
-        tokio::spawn(super::frame::pframe_deocde_thread(read, tx, notify.clone()));
-
-        Ok(TransitInner::Rustls(write))
+        Ok((Either::Right(read), Either::Right(write)))
     } else {
         let (read, write) = raw.into_split();
-        tokio::spawn(super::frame::pframe_deocde_thread(read, tx, notify.clone()));
-
-        Ok(TransitInner::Raw(write))
+        Ok((Either::Left(read), Either::Left(write)))
     }
 }
 
-pub type JoinError = tokio::task::JoinError;
+pub type JoinHandle<T> = tokio::task::JoinHandle<T>;
 
-pub async fn spawn<F>(future: F) -> Result<F::Output, JoinError>
+pub fn spawn<F>(future: F) -> JoinHandle<F::Output>
 where
     F: Future + Send + Sync + 'static,
     F::Output: Send + Sync + 'static,
 {
-    tokio::spawn(future).await
+    tokio::spawn(future)
 }
 
-pub async fn timeout<F: Future>(duration: Duration, future: F) -> Result<F::Output, ()> {
-    time::timeout(duration, future).await.map_err(|_| ())
+pub async fn timeout<F: Future>(duration: Duration, future: F) -> Option<F::Output> {
+    time::timeout(duration, future).await.ok()
 }

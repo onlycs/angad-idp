@@ -1,10 +1,9 @@
-use std::{sync::Arc, time::Duration};
+use std::{pin::pin, time::Duration};
 
 use gloo_timers::future::TimeoutFuture;
 use snafu::{Location, prelude::*};
 use strum::EnumDiscriminants;
-use tokio::sync::{Mutex, oneshot};
-use tokio_util::sync::CancellationToken;
+use tokio::{io::AsyncWrite, sync::oneshot};
 use wasm_bindgen::prelude::*;
 use xwt_web::{
     Endpoint,
@@ -14,10 +13,8 @@ use xwt_web::{
     },
 };
 
-use super::client::Registry;
-
 #[derive(Snafu, Debug, EnumDiscriminants)]
-#[strum_discriminants(wasm_bindgen::prelude::wasm_bindgen)]
+#[strum_discriminants(wasm_bindgen)]
 #[strum_discriminants(name(ConnectErrorTag))]
 pub enum ConnectErrorInner {
     #[snafu(display("Could not start WebTransport connection to {url}"))]
@@ -68,6 +65,12 @@ impl ConnectError {
     }
 }
 
+impl ConnectError {
+    pub fn inner(&self) -> &ConnectErrorInner {
+        &self.error
+    }
+}
+
 impl std::fmt::Display for ConnectError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.error.fmt(f)
@@ -75,18 +78,6 @@ impl std::fmt::Display for ConnectError {
 }
 
 impl std::error::Error for ConnectError {}
-
-pub struct TransitInner {
-    _session: xwt_web::Session,
-
-    pub(crate) send: xwt_web::SendStream,
-}
-
-impl TransitInner {
-    pub fn as_async_write(&mut self) -> &mut xwt_web::SendStream {
-        &mut self.send
-    }
-}
 
 #[derive(Clone)]
 #[wasm_bindgen(getter_with_clone)]
@@ -103,17 +94,54 @@ impl ConnectOptions {
     }
 }
 
+pub struct KeepAlive {
+    send: xwt_web::SendStream,
+    _keep_alive: xwt_web::Session,
+}
+
+impl AsyncWrite for KeepAlive {
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        AsyncWrite::poll_flush(pin!(&mut self.send), cx)
+    }
+
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        AsyncWrite::poll_write(pin!(&mut self.send), cx, buf)
+    }
+
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        AsyncWrite::poll_shutdown(pin!(&mut self.send), cx)
+    }
+
+    fn is_write_vectored(&self) -> bool {
+        self.send.is_write_vectored()
+    }
+
+    fn poll_write_vectored(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        bufs: &[std::io::IoSlice<'_>],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        AsyncWrite::poll_write_vectored(pin!(&mut self.send), cx, bufs)
+    }
+}
+
+pub type Reader = xwt_web::RecvStream;
+pub type Writer = KeepAlive;
+
 pub(super) async fn connect(
     ConnectOptions { addr, path }: &ConnectOptions,
-    tx: Arc<Mutex<Registry>>,
-    notify: CancellationToken,
-) -> Result<TransitInner, ConnectError> {
-    async fn inner(
-        addr: &String,
-        path: &String,
-        tx: Arc<Mutex<Registry>>,
-        notify: CancellationToken,
-    ) -> Result<TransitInner, ConnectErrorInner> {
+) -> Result<(Reader, Writer), ConnectError> {
+    async fn inner(addr: &String, path: &String) -> Result<(Reader, Writer), ConnectErrorInner> {
         let url = format!("https://{addr}/{path}");
 
         let endpoint = Endpoint::default();
@@ -129,17 +157,18 @@ pub(super) async fn connect(
             .context(SessionSnafu { url: &url })?;
 
         let opening = session.open_bi().await.context(StreamSnafu { url: &url })?;
-
         let (send, recv) = opening.wait_bi().await.unwrap_or_else(|e| match e {});
-        wasm_bindgen_futures::spawn_local(super::frame::pframe_deocde_thread(recv, tx, notify));
 
-        Ok(TransitInner {
-            _session: session,
-            send,
-        })
+        Ok((
+            recv,
+            KeepAlive {
+                send,
+                _keep_alive: session,
+            },
+        ))
     }
 
-    match inner(addr, path, tx, notify).await {
+    match inner(addr, path).await {
         Ok(transit) => Ok(transit),
 
         Err(error) => Err(ConnectError {
@@ -149,9 +178,9 @@ pub(super) async fn connect(
     }
 }
 
-pub type JoinError = oneshot::error::RecvError;
+pub type JoinHandle<T> = oneshot::Receiver<T>;
 
-pub async fn spawn<F>(future: F) -> Result<F::Output, JoinError>
+pub fn spawn<F>(future: F) -> JoinHandle<F::Output>
 where
     F: Future + 'static,
     F::Output: Send + Sync + 'static,
@@ -161,12 +190,12 @@ where
         let _ = tx.send(future.await);
     });
 
-    rx.await
+    rx
 }
 
-pub async fn timeout<F: Future>(duration: Duration, future: F) -> Result<F::Output, ()> {
+pub async fn timeout<F: Future>(duration: Duration, future: F) -> Option<F::Output> {
     tokio::select! {
-        res = future => Ok(res),
-        _ = TimeoutFuture::new(duration.as_millis() as u32) => Err(())
+        res = future => Some(res),
+        _ = TimeoutFuture::new(duration.as_millis() as u32) => None
     }
 }
