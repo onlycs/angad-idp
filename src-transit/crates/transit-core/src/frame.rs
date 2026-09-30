@@ -1,9 +1,15 @@
-use std::{io, mem, sync::Arc, time::Duration};
+use std::io;
+#[cfg(any(feature = "client", feature = "server"))]
+use std::time::Duration;
+#[cfg(feature = "client")]
+use std::{mem, sync::Arc};
 
 use snafu::{Location, ResultExt, Snafu};
+#[cfg(feature = "client")]
+use tokio::sync::Mutex;
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
-    sync::{Mutex, mpsc::UnboundedReceiver},
+    sync::mpsc::UnboundedReceiver,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
