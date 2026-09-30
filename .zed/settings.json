@@ -6,30 +6,37 @@
     "tab_size": 4,
     "languages": {
         "TypeScript": {
-            "formatter": "prettier"
+            "formatter": "prettier",
         },
         "Vue.js": {
-            "formatter": "prettier"
+            "formatter": "prettier",
         },
         "CSS": {
             "language_servers": ["tailwindcss-intellisense-css", "!vscode-css-language-server"],
-            "formatter": "prettier"
+            "formatter": "prettier",
         },
         "Markdown": {
-            "formatter": "prettier"
+            "formatter": "prettier",
         },
         "YAML": {
-            "formatter": "prettier"
+            "formatter": "prettier",
+            "tab_size": 2,
         },
         "SQL": {
-            "tab_size": 4
-        }
+            "tab_size": 4,
+        },
+        "Proto": {
+            "tab_size": 2,
+        },
+        "Apache Avro (IDL)": {
+            "tab_size": 2,
+        },
     },
     "lsp": {
         "tailwindcss-language-server": {
             "settings": {
                 "includeLanguages": {
-                    "vue": "html"
+                    "vue": "html",
                 },
                 "classFunctions": ["cn"],
                 "experimental": {
@@ -37,17 +44,21 @@
                         "class=\"([^\"]*)\"",
                         "class='([^']*)'",
                         ":class=\"([^\"]*)\"",
-                        ":class='([^']*)'"
-                    ]
-                }
-            }
+                        ":class='([^']*)'",
+                    ],
+                },
+            },
         },
         "rust-analyzer": {
             "initialization_options": {
                 "check": {
-                    "command": "clippy"
-                }
-            }
-        }
-    }
+                    "command": "clippy",
+                },
+                "cargo": {
+                    "allFeatures": true,
+                    // "target": "wasm32-unknown-unknown",
+                },
+            },
+        },
+    },
 }

@@ -1,0 +1,60 @@
+@namespace("idp")
+protocol UserService {
+
+  import idl "idp/auth.avdl";
+  import idl "idp/group.avdl";
+
+  record User {
+    string uid;
+    string username;
+    string email;
+    array<Membership> memberships = [];
+  }
+
+  // == Authentication
+  record AuthenticateRequest {
+    string uid;
+    string password;
+  }
+
+  record AuthenticateResponse {
+    boolean ok;
+    User? user = null; // proto2 `optional` -> nullable union, default null
+  }
+
+  // == User Search
+  record QueryByUid { string uid; }
+  record QueryByUsername { string username; }
+  record QueryByEmail { string email; }
+  record QueryByMembership { Membership membership; }
+
+  record UserQueryRequest {
+    Authentication auth;
+    union { QueryByUid, QueryByUsername, QueryByEmail, QueryByMembership } query;
+  }
+
+  // == User Update
+  record UserUpdateRequest {
+    Authentication auth;
+    string uid;
+    string? username = null;
+    string? email = null;
+    array<Membership> admit = [];
+    array<Membership> revoke = [];
+  }
+
+  record UpdatePasswordRequest {
+    string uid;
+    union { DirectPasswordAuth, IntegrationAuth } auth;
+    string password;
+  }
+
+  record InviteRequest {
+    string jwt;
+  }
+
+  AuthenticateResponse authenticate(AuthenticateRequest req);
+  array<User> query(UserQueryRequest req);
+  User update(UserUpdateRequest req);
+  User updatePassword(UpdatePasswordRequest req);
+}

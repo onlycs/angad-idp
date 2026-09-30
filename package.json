@@ -1,5 +1,5 @@
 {
-    "name": "angad-auth",
+    "name": "angad-idp",
     "version": "0.1.0",
     "scripts": {
         "build": "vite build",

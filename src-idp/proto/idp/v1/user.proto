@@ -1,0 +1,66 @@
+syntax = "proto2";
+
+package idp.v1;
+
+import "idp/v1/auth.proto";
+import "idp/v1/group.proto";
+
+message User {
+  required string uid = 1;
+  required string username = 2;
+  required string email = 3;
+  repeated Membership memberships = 4;
+}
+
+// == Authentication
+message AuthenticateRequest {
+  required string uid = 1;
+  required string password = 2;
+}
+
+message AuthenticateResponse {
+  required bool ok = 1;
+  optional User user = 2;
+}
+
+// == User Search
+message UserQueryRequest {
+  required Authentication auth = 1;
+  oneof query_oneof {
+    string uid = 2;
+    string username = 3;
+    string email = 4;
+    Membership membership = 5;
+  }
+}
+
+// == User Update
+message UserUpdateRequest {
+  required Authentication auth = 1;
+  required string uid = 2;
+  optional string username = 3;
+  optional string email = 4;
+  repeated Membership admit = 5;
+  repeated Membership revoke = 6;
+}
+
+message UpdatePasswordRequest {
+  required string uid = 1;
+  oneof auth_oneof {
+    string password_old = 2;
+    string integration = 3;
+  }
+  required string password_new = 4;
+}
+
+// == Invites
+message InviteRequest {
+  required string jwt = 1;
+}
+
+service UserService {
+  rpc Authenticate(AuthenticateRequest) returns (AuthenticateResponse);
+  rpc Query(UserQueryRequest) returns (stream User);
+  rpc Update(UserUpdateRequest) returns (User);
+  rpc UpdatePassword(UpdatePasswordRequest) returns (User);
+}

@@ -1,0 +1,30 @@
+#![allow(clippy::expect_fun_call)]
+#![feature(error_generic_member_access)]
+
+#[cfg(all(target_family = "wasm", feature = "uniffi"))]
+compile_error!("`wasm32` is not compatible with `uniffi`");
+
+#[cfg(feature = "uniffi")]
+uniffi::setup_scaffolding!("transit");
+
+#[cfg(feature = "client")]
+#[cfg_attr(target_family = "wasm", path = "wasm32.rs")]
+#[cfg_attr(not(target_family = "wasm"), path = "tcp.rs")]
+mod arch;
+
+#[cfg(feature = "client")]
+pub mod client;
+
+pub mod frame;
+
+pub use transit_macros::*;
+
+pub trait Route {
+    const ID: frame::RouteId;
+
+    type Request: bitcode::Encode + bitcode::DecodeOwned + Send + Sync + 'static;
+    type Response: bitcode::Encode + bitcode::DecodeOwned + Send + Sync + 'static;
+}
+
+#[error_shard("Internal server error")]
+pub struct InternalError;

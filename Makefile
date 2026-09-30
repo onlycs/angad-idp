@@ -23,10 +23,6 @@ fmt:
 	cd src-api && cargo fmt
 	cd src-crypto && cargo fmt
 
-palette:
-	@echo "=== Generating palette"
-	bun scripts/palette.ts
-
 build:
 	@echo "=== Building the API"
 	cd src-api && cargo build --release
@@ -37,4 +33,4 @@ build:
 	@echo "=== Building frontend"
 	bun generate
 
-postinstall: grpc wasm palette
+postinstall: grpc wasm

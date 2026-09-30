@@ -1,0 +1,40 @@
+syntax = "proto2";
+
+package idp.v1;
+
+import "idp/v1/auth.proto";
+
+message Membership {
+  required string slug = 1;
+  required bool admin = 2;
+}
+
+message ApplicationOidc {
+  required string redirect_uri = 1;
+}
+
+message Application {
+  required string slug = 1;
+  required string name = 2;
+  required string url = 3;
+  optional ApplicationOidc oidc = 4;
+}
+
+// == Application Query
+message ApplicationQueryRequest {
+  required Authentication auth = 1;
+  oneof query_oneof {
+    string slug = 2;
+    string name = 3;
+  }
+}
+
+// == Application update
+message ApplicationUpdateRequest {
+  required Authentication auth = 1;
+  required string slug = 2;
+  optional string name = 3;
+  optional string url = 4;
+  optional ApplicationOidc oidc = 5;
+  required bool rotate_secret = 6 [default = false];
+}

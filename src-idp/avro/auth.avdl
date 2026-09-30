@@ -1,0 +1,17 @@
+namespace idp;
+
+record JwtAuth {
+  string jwt;
+}
+
+record IntegrationAuth {
+  string integration;
+}
+
+record DirectPasswordAuth {
+  string password;
+}
+
+record Authentication {
+  union { JwtAuth, IntegrationAuth } auth;
+}

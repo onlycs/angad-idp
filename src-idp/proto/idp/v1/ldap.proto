@@ -1,0 +1,21 @@
+syntax = "proto2";
+
+package idp.v1;
+
+import "idp/v1/auth.proto";
+import "idp/v1/group.proto";
+import "idp/v1/user.proto";
+
+message LdapQueryRequest {
+  required Authentication auth = 1;
+  required string query = 2;
+}
+
+message LdapQueryResponse {
+  repeated User users = 1;
+  repeated Application applications = 2;
+}
+
+service LdapCompatService {
+  rpc LdapQuery(LdapQueryRequest) returns (LdapQueryResponse);
+}
