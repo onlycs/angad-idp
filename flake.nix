@@ -1,10 +1,11 @@
 {
-  description = "angad auth";
+  description = "angad idp";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     rust-overlay.url = "github:oxalica/rust-overlay";
     flake-utils.url = "github:numtide/flake-utils";
+    uniffi-bindgen-go.url = "git+https://codeberg.org/tendulkar/uniffi-bindgen-go";
   };
 
   outputs =
@@ -13,6 +14,7 @@
       nixpkgs,
       flake-utils,
       rust-overlay,
+      uniffi-bindgen-go,
     }:
     flake-utils.lib.eachDefaultSystem (
       system:
@@ -23,18 +25,19 @@
 
         applications = with pkgs; [
           toolchain
+          sqlx-cli
+          wasm-pack
+
+          go
+          gopls
+          uniffi-bindgen-go.packages.${system}.default
 
           prettier
-          node-gyp
-
-          bacon
           bun
           nodejs
-          nil
-          sqlx-cli
-          nixd
 
-          wasm-pack
+          nil
+          nixd
         ];
 
         libraries = with pkgs; [

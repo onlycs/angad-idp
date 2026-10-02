@@ -241,45 +241,59 @@ pub fn error(tokens1: proc_macro::TokenStream) -> proc_macro::TokenStream {
     .into()
 }
 
-struct RouteDefinition {
-    name: syn::Ident,
-    request: syn::Type,
-    response: syn::Type,
-}
-
-impl Parse for RouteDefinition {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let name = input.parse()?;
-        let inner;
-        syn::parenthesized!(inner in input);
-        let request = inner.parse()?;
-        if !inner.is_empty() {
-            return Err(inner.error("expected one request type"));
-        }
-        input.parse::<Token![->]>()?;
-        let response = input.parse()?;
-        Ok(Self {
-            name,
-            request,
-            response,
-        })
-    }
-}
-
-struct Routes(Punctuated<RouteDefinition, Token![;]>);
-
-impl Parse for Routes {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        Ok(Self(Punctuated::parse_terminated(input)?))
-    }
-}
-
 #[proc_macro]
 pub fn route(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    struct RouteDefinition {
+        name: syn::Ident,
+        request: syn::Type,
+        response_t: syn::Type,
+        response_e: syn::Type,
+    }
+
+    impl Parse for RouteDefinition {
+        fn parse(input: ParseStream) -> syn::Result<Self> {
+            let name = input.parse()?;
+            let inner;
+            syn::parenthesized!(inner in input);
+            let request = inner.parse()?;
+            if !inner.is_empty() {
+                return Err(inner.error("expected one request type"));
+            }
+            input.parse::<Token![->]>()?;
+
+            let result_ident = input.parse::<syn::Ident>()?;
+            if result_ident != "Result" {
+                return Err(input.error("Expected `Result`"));
+            }
+
+            input.parse::<Token![<]>()?;
+            let response_t = input.parse::<syn::Type>()?;
+            input.parse::<Token![,]>()?;
+            let response_e = input.parse::<syn::Type>()?;
+            input.parse::<Token![>]>()?;
+
+            Ok(Self {
+                name,
+                request,
+                response_t,
+                response_e,
+            })
+        }
+    }
+
+    struct Routes(Punctuated<RouteDefinition, Token![;]>);
+
+    impl Parse for Routes {
+        fn parse(input: ParseStream) -> syn::Result<Self> {
+            Ok(Self(Punctuated::parse_terminated(input)?))
+        }
+    }
+
     let Routes(routes) = syn::parse_macro_input!(tokens as Routes);
-    let routes = routes.into_iter().map(|RouteDefinition { name, request, response }| {
+    let routes = routes.into_iter().map(|RouteDefinition { name, request, response_t, response_e }| {
         let function = format_ident!("route_{}", name.to_string().to_snake_case());
         let result_type = format_ident!("{}Result", name);
+        let error_type = format_ident!("{}FfiError", name);
         let js_return_type = result_type.to_string();
 
         quote! {
@@ -287,20 +301,48 @@ pub fn route(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
             impl ::transit_core::Route for #name {
                 const ID: ::transit_core::frame::RouteId = ::xxhash_rust::const_xxh3::xxh3_64(stringify!(#name).as_bytes());
                 type Request = #request;
-                type Response = #response;
+                type Response = Result<#response_t, #response_e>;
+            }
+
+            #[cfg(feature = "uniffi")]
+            #[derive(Debug, ::uniffi::Error)]
+            pub enum #error_type {
+                Protocol(#response_e),
+                Route(::std::sync::Arc<::transit_core::client::RouteError>),
+            }
+
+            #[cfg(feature = "uniffi")]
+            impl ::std::fmt::Display for #error_type {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                    match self {
+                        Self::Protocol(e) => ::std::fmt::Display::fmt(e, f),
+                        Self::Route(e) => ::std::fmt::Display::fmt(e, f),
+                    }
+                }
+            }
+
+            #[cfg(feature = "uniffi")]
+            impl ::std::error::Error for #error_type {
+                fn source(&self) -> Option<&(dyn ::std::error::Error + 'static)> {
+                    match self {
+                        Self::Protocol(e) => Some(e),
+                        Self::Route(e) => Some(e),
+                    }
+                }
             }
 
             #[cfg(feature = "uniffi")]
             #[::uniffi::export]
-            pub async fn #function(t: &::transit_core::client::Transit, req: #request)
-                -> Result<#response, ::transit_core::client::RouteError>
+            pub async fn #function(t: &::transit_core::client::Transit, req: #request) -> Result<#response_t, #error_type>
             {
                 t.route::<#name>(req).await
+                    .map_err(|e| #error_type::Route(::std::sync::Arc::new(e)))
+                    .and_then(|r| r.map_err(|e| #error_type::Protocol(e)))
             }
 
             #[cfg(target_family = "wasm")]
             #[::tsify::declare]
-            pub type #result_type = #response;
+            pub type #result_type = Result<#response_t, #response_e>;
 
             #[cfg(target_family = "wasm")]
             #[::wasm_bindgen::prelude::wasm_bindgen(unchecked_return_type = #js_return_type)]
@@ -327,4 +369,71 @@ pub fn route(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
         }
     });
     quote! { #(#routes)* }.into()
+}
+
+#[proc_macro_attribute]
+pub fn core_error(
+    _attr: proc_macro::TokenStream,
+    item1: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let item = syn::parse_macro_input!(item1 as syn::ItemEnum);
+    let ident = &item.ident;
+    let ident_tag = quote::format_ident!("{ident}Tag");
+    let ident_wrap = quote::format_ident!("{ident}Wrapped");
+
+    quote! {
+        #[derive(Debug, ::snafu::Snafu, ::strum::EnumDiscriminants)]
+        #[cfg_attr(feature = "uniffi", derive(::uniffi::Object))]
+        #[cfg_attr(target_family = "wasm", strum_discriminants(::wasm_bindgen::prelude::wasm_bindgen))]
+        #[cfg_attr(feature = "uniffi", strum_discriminants(derive(::uniffi::Object)))]
+        #[strum_discriminants(name(#ident_tag))]
+        #item
+
+        #[cfg(feature = "uniffi")]
+        #[uniffi::export]
+        impl #ident {
+            pub fn tag(&self) -> #ident_tag {
+                ::strum::IntoDiscriminant::discriminant(self)
+            }
+
+            pub fn report(&self) -> String {
+                ::snafu::Report::from_error(&self).to_string()
+            }
+        }
+
+        #[cfg(target_family = "wasm")]
+        pub struct #ident_wrap {
+            error: #ident,
+            #[wasm_bindgen(getter)]
+            tag: #ident_tag,
+        }
+
+        #[cfg(target_family = "wasm")]
+        impl #ident_wrap {
+            pub fn wrap(error: #ident) -> Self {
+                Self {
+                    tag: ::strum::IntoDiscriminant::discriminant(&error),
+                    error,
+                }
+            }
+        }
+
+        #[cfg(target_family = "wasm")]
+        impl #ident_wrap {
+            #[wasm_bindgen(getter)]
+            pub fn report(&self) -> String {
+                ::snafu::Report::from_error(&self.error).to_string()
+            }
+
+            #[wasm_bindgen(getter)]
+            pub fn message(&self) -> String {
+                format!("{}", self.error)
+            }
+
+            #[wasm_bindgen(unchecked_return_type = "never")]
+            pub fn raise(&self) -> JsValue {
+                ::wasm_bindgen::throw_str(&::snafu::Report::from_error(&self.error).to_string());
+            }
+        }
+    }.into()
 }

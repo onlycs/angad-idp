@@ -10,6 +10,7 @@ use tokio::{
     },
 };
 use tokio_util::sync::CancellationToken;
+use transit_macros::core_error;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::prelude::*;
 
@@ -19,12 +20,7 @@ use crate::{
     frame::{self, MessageId},
 };
 
-#[derive(Snafu, Debug)]
-#[cfg_attr(target_family = "wasm", derive(strum::EnumDiscriminants))]
-#[cfg_attr(target_family = "wasm", strum_discriminants(wasm_bindgen))]
-#[cfg_attr(target_family = "wasm", strum_discriminants(name(RouteErrorTag)))]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Error))]
-#[cfg_attr(feature = "uniffi", uniffi(flat_error))]
+#[core_error]
 pub enum RouteError {
     #[snafu(display("Frame error"))]
     Frame {
@@ -80,42 +76,6 @@ pub enum RouteError {
     #[cfg(target_family = "wasm")]
     #[snafu(display("Response serialization failed: {message}"))]
     Serialization { message: String },
-}
-
-#[cfg(target_family = "wasm")]
-#[wasm_bindgen]
-pub struct RouteErrorWrapped {
-    error: RouteError,
-    tag: RouteErrorTag,
-}
-
-#[cfg(target_family = "wasm")]
-impl RouteErrorWrapped {
-    pub fn wrap(error: RouteError) -> Self {
-        Self {
-            tag: strum::IntoDiscriminant::discriminant(&error),
-            error,
-        }
-    }
-}
-
-#[cfg(target_family = "wasm")]
-#[wasm_bindgen]
-impl RouteErrorWrapped {
-    #[wasm_bindgen(getter)]
-    pub fn tag(&self) -> RouteErrorTag {
-        self.tag
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn message(&self) -> String {
-        snafu::Report::from_error(&self.error).to_string()
-    }
-
-    #[wasm_bindgen(unchecked_return_type = "never")]
-    pub fn raise(&self) -> JsValue {
-        wasm_bindgen::throw_str(&snafu::Report::from_error(&self.error).to_string());
-    }
 }
 
 #[derive(Clone)]

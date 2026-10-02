@@ -4,21 +4,28 @@ SHELL := bash
 
 all: build
 
-transit:
+transit-wasm:
 	@echo "=== Building transit for wasm32"
-	cd src-transit && cargo build -p transit-core --release --features client --target wasm32-unknown-unknown
+	cd src-transit && cargo build -p transit-proto --release --features client --target wasm32-unknown-unknown
 
-	@echo "=== Building server for non-wasm"
-	cd src-transit && cargo build -p transit-core --release --features server
+transit-native:
+	@echo "=== Building transit for native"
+	cd src-transit && cargo build -p transit-proto --release --features server,client,uniffi
 
-	@echo "=== Building client for non-wasm"
-	cd src-transit && cargo build -p transit-core --release --features client
+transit: transit-wasm transit-native
 
-	@echo "=== Building protocol for wasm32"
-	cd src-transit && cargo build -p transit-proto --release --target wasm32-unknown-unknown
-
-	@echo "=== Building protocol for non-wasm"
-	cd src-transit && cargo build -p transit-proto --release
+ldap: transit-native
+	@echo "=== Cleaning bindings"
+	find src-ldap/transit -mindepth 1 -maxdepth 1 ! -name 'go.mod' ! -name '.gitignore' -exec rm -rf -- {} +
+	@echo "=== Generating bindings"
+	cd src-transit && uniffi-bindgen-go target/release/libtransit_proto.so -o ../src-ldap/transit -c ../src-ldap/uniffi.toml
+	@echo "=== Building"
+	cd src-ldap && go mod tidy
+	cd src-ldap && \
+		LD_LIBRARY_PATH="$(LD_LIBRARY_PATH):$(PWD)/src-transit/target/release" \
+		CGO_LDFLAGS="-ltransit_proto -L$(PWD)/src-transit/target/release -lm -ldl" \
+		CGO_ENABLED=1 \
+		go build
 
 wasm:
 	@echo "=== Building WASM package"

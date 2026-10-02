@@ -13,10 +13,9 @@ use tokio::{
 };
 use tokio_rustls::{TlsConnector, TlsStream};
 use tokio_util::either::Either;
+use transit_macros::core_error;
 
-#[derive(Snafu, Debug)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Error))]
-#[cfg_attr(feature = "uniffi", uniffi(flat_error))]
+#[core_error]
 pub enum ConnectError {
     #[snafu(display("Invalid certificate"))]
     RootCertParse {

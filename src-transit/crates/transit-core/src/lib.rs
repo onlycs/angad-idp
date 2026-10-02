@@ -8,7 +8,7 @@ compile_error!("`wasm32` is not compatible with `uniffi`");
 compile_error!("`wasm32` is not compatible with `server`");
 
 #[cfg(feature = "uniffi")]
-uniffi::setup_scaffolding!("transit");
+uniffi::setup_scaffolding!("transit_core");
 
 #[cfg(feature = "client")]
 #[cfg_attr(target_family = "wasm", path = "wasm32.rs")]
@@ -23,7 +23,7 @@ pub mod server;
 
 pub mod frame;
 
-pub use transit_macros::*;
+pub use transit_macros::{error, error_shard, oneof, record, route};
 
 pub trait Route {
     const ID: frame::RouteId;

@@ -9,6 +9,8 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = []
 uniffi = ["dep:uniffi", "transit-core/uniffi"]
+client = ["transit-core/client"]
+server = ["transit-core/server"]
 
 [dependencies]
 bitcode = "0.6.9"
@@ -17,7 +19,7 @@ transit-core = { version = "0.1.0", path = "../transit-core" }
 xxhash-rust = { version = "0.8.18", features = ["const_xxh3"] }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-uniffi = { version = "0.32.1", optional = true, features = ["cli"] }
+uniffi = { version = "=0.31.0", optional = true, features = ["cli"] }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 transit-core = { version = "0.1.0", path = "../transit-core", features = ["client"] }
