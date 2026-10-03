@@ -54,7 +54,7 @@ fmt:
 	@echo "=== Formatting code"
 	bun fmt
 	cd src-api && cargo fmt
-	cd src-crypto && cargo fmt
+	cd src-wasm && cargo fmt
 
 build:
 	@echo "=== Building the API"

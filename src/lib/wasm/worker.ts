@@ -1,18 +1,18 @@
 import type { FilteredKeys } from "$lib/utils/gymnastics";
-type CryptoJs = typeof import("$wasm/crypto");
+type LibIdpJs = typeof import("$wasm/libidp");
 
 // @ts-ignore
-let auth_crypto: CryptoJs;
+let libidp: LibIdpJs;
 let initializer: Promise<void> | undefined;
 
-export interface WorkerMessage<K extends CryptoFunction> {
+export interface WorkerMessage<K extends WasmFunction> {
     id: number;
     fn: K;
-    args: CryptoJs[K] extends (...args: infer P) => any ? P : never;
+    args: LibIdpJs[K] extends (...args: infer P) => any ? P : never;
 }
 export type WorkerResponse = { id: number; result: any };
 
-export const CryptoFunctionExcludes = [
+export const WasmFunctionExcludes = [
     "init",
     "initThreadPool",
     "initSync",
@@ -20,25 +20,25 @@ export const CryptoFunctionExcludes = [
     "default",
     "wbg_rayon_PoolBuilder",
 ] as const;
-export type CryptoFunction = Exclude<
-    FilteredKeys<CryptoJs, Function>,
-    (typeof CryptoFunctionExcludes)[number]
+export type WasmFunction = Exclude<
+    FilteredKeys<LibIdpJs, (...args: any[]) => any>,
+    (typeof WasmFunctionExcludes)[number]
 >;
 
 function operationOk(op: string): boolean {
     return (
-        !CryptoFunctionExcludes.includes(op as any) &&
-        typeof (auth_crypto as any)[op] === "function"
+        !WasmFunctionExcludes.includes(op as any) &&
+        typeof (libidp as any)[op] === "function"
     );
 }
 
 function init(): Promise<void> {
     if (!initializer) {
         initializer = (async () => {
-            auth_crypto = await import(/* @vite-ignore */ location.origin + "/wasm/auth_crypto.js");
-            await auth_crypto.default("/wasm/auth_crypto_bg.wasm");
+            libidp = await import(/* @vite-ignore */ location.origin + "/wasm/libidp.js");
+            await libidp.default("/wasm/libidp_bg.wasm");
             try {
-                await auth_crypto.initThreadPool(navigator.hardwareConcurrency || 4);
+                await libidp.initThreadPool(navigator.hardwareConcurrency || 4);
             } catch (e) {
                 console.error("Failed to initialize thread pool:", e);
                 console.warn("Assuming pool is already initialized");
@@ -48,10 +48,10 @@ function init(): Promise<void> {
     return initializer;
 }
 
-self.onmessage = async (event: MessageEvent<WorkerMessage<CryptoFunction>>) => {
+self.onmessage = async (event: MessageEvent<WorkerMessage<WasmFunction>>) => {
     await init();
     if (typeof event.data === "string" && event.data === "init") {
-        self.postMessage({ id: -1, result: Object.keys(auth_crypto).filter(operationOk) });
+        self.postMessage({ id: -1, result: Object.keys(libidp).filter(operationOk) });
         return;
     }
     const { id, fn, args } = event.data;
@@ -59,7 +59,7 @@ self.onmessage = async (event: MessageEvent<WorkerMessage<CryptoFunction>>) => {
         self.postMessage({ id, result: undefined });
         return;
     }
-    const func = auth_crypto[fn] as (...args: any[]) => any;
+    const func = libidp[fn] as (...args: any[]) => any;
     const result = await (func as any)(...(args as any[]));
     self.postMessage({ id, result } satisfies WorkerResponse);
 };

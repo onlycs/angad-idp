@@ -1,21 +1,21 @@
-import type { CryptoFunction, WorkerMessage, WorkerResponse } from "$lib/wasm/worker";
+import type { WasmFunction, WorkerMessage, WorkerResponse } from "$lib/wasm/worker";
 
-type CryptoJs = typeof import("$wasm/libidp");
+type LibIdpJs = typeof import("$wasm/libidp");
 type Awaited<R> = R extends Promise<infer T> ? T : R;
-type AsyncCryptoModule = {
-    [K in CryptoFunction]: (
-        ...args: Parameters<CryptoJs[K]>
-    ) => Promise<Awaited<ReturnType<CryptoJs[K]>>>;
+type AsyncWasmModule = {
+    [K in WasmFunction]: (
+        ...args: Parameters<LibIdpJs[K]>
+    ) => Promise<Awaited<ReturnType<LibIdpJs[K]>>>;
 } & {
-    worker: CryptoWorker;
+    worker: WasmWorker;
 };
 
-export class CryptoWorker {
+export class WasmWorker {
     private worker: Worker;
     private pending: Map<number, { resolve: Function; reject: Function }> = new Map();
     private id = 0;
 
-    constructor(oninit: (fns: CryptoFunction[]) => void = () => {}) {
+    constructor(oninit: (fns: WasmFunction[]) => void = () => {}) {
         this.worker = new Worker(new URL("worker.ts", import.meta.url), {
             type: "module",
         });
@@ -39,7 +39,7 @@ export class CryptoWorker {
         };
 
         this.pending.set(-1, {
-            resolve: (module: CryptoFunction[]) => {
+            resolve: (module: WasmFunction[]) => {
                 oninit(module);
                 console.log("Worker initialized!");
             },
@@ -48,9 +48,9 @@ export class CryptoWorker {
         this.worker.postMessage("init");
     }
 
-    async execute<K extends CryptoFunction>(
+    async execute<K extends WasmFunction>(
         message: Omit<WorkerMessage<K>, "id">,
-    ): Promise<CryptoJs[K] extends (...args: infer _P) => infer R ? Awaited<R> : never> {
+    ): Promise<LibIdpJs[K] extends (...args: infer _P) => infer R ? Awaited<R> : never> {
         return new Promise((resolve, reject) => {
             this.pending.set(this.id, { resolve, reject });
             this.worker.postMessage({ id: this.id++, ...message });
@@ -63,11 +63,11 @@ export class CryptoWorker {
     }
 }
 
-let instance: AsyncCryptoModule | undefined;
+let instance: AsyncWasmModule | undefined;
 
-export function getCrypto(): AsyncCryptoModule {
+export function getWasm(): AsyncWasmModule {
     if (!instance) {
-        const worker = new CryptoWorker();
+        const worker = new WasmWorker();
         instance = new Proxy(
             { worker },
             {
@@ -77,7 +77,7 @@ export function getCrypto(): AsyncCryptoModule {
                     return (...args: any) => worker.execute({ fn: prop, args } as any);
                 },
             },
-        ) as AsyncCryptoModule;
+        ) as AsyncWasmModule;
     }
 
     return instance;
