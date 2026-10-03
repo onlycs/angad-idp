@@ -15,9 +15,9 @@ use transit_macros::core_error;
 use wasm_bindgen::prelude::*;
 
 use crate::{
-    Route,
+    InternalError, Route,
     arch::{self, *},
-    frame::{self, MessageId},
+    frame::{self, MessageId, RouteId},
 };
 
 #[core_error]
@@ -43,9 +43,16 @@ pub enum RouteError {
         location: Location,
     },
 
-    #[snafu(display("Reconnect failed"))]
-    Reconnect {
+    #[snafu(display("Connection failed"))]
+    Connect {
         source: arch::ConnectError,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Internal error while fetching known routes"))]
+    FetchKnownRoutes {
+        source: InternalError,
         #[snafu(implicit)]
         location: Location,
     },
@@ -65,6 +72,13 @@ pub enum RouteError {
 
     #[snafu(display("Request closed"))]
     Closed {
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Unknown route {}", hex::encode(route.to_le_bytes())))]
+    UnknownRoute {
+        route: RouteId,
         #[snafu(implicit)]
         location: Location,
     },
@@ -107,7 +121,7 @@ impl TransitOptions {
     }
 }
 
-pub type Registry = HashMap<MessageId, oneshot::Sender<Vec<u8>>>;
+pub type Registry = HashMap<MessageId, oneshot::Sender<Option<Vec<u8>>>>;
 
 struct Connection {
     _read: arch::JoinHandle<()>,
@@ -136,7 +150,8 @@ impl Connection {
                 rx.await.context(TxSnafu) // this is generally what is waited on, but wrap everything
             })
             .await
-            .ok_or_else(|| ClosedSnafu.build())??;
+            .ok_or_else(|| ClosedSnafu.build())??
+            .context(UnknownRouteSnafu { route: R::ID })?;
 
         let res = bitcode::decode(&res).context(DecodeSnafu)?;
 
@@ -160,7 +175,7 @@ impl Transit {
         let mut conn = self.connection.lock().await;
 
         if conn.closed.is_cancelled() {
-            *conn = Arc::new(_connect(&self.options).await.context(ReconnectSnafu)?);
+            *conn = Arc::new(_connect(&self.options).await.context(ConnectSnafu)?);
         }
 
         Ok(Arc::clone(&conn))

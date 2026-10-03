@@ -307,7 +307,7 @@ pub fn route(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
             #[cfg(feature = "uniffi")]
             type #error_binding_type = ::std::sync::Arc<::transit_core::client::RouteError>;
             #[cfg(target_family = "wasm")]
-            type #error_binding_type = ::transit_core::client::RouteErrorWrapped;
+            type #error_binding_type = ::std::cell::RefCell<Option<::transit_core::client::RouteErrorWrapped>>;
 
             #[cfg(any(feature = "uniffi", target_family = "wasm"))]
             #[derive(Debug)]
@@ -316,7 +316,7 @@ pub fn route(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
             pub enum #error_type {
                 Protocol(#response_e),
                 Route(
-                    #[cfg_attr(target_family = "wasm", serde(serialize_with = "::transit_core::wbg_util::__very_unsafe_serialize"))]
+                    #[cfg_attr(target_family = "wasm", serde(serialize_with = "::transit_core::wbg_util::serialize_wrapper"))]
                     #error_binding_type
                 ),
             }
@@ -366,16 +366,10 @@ pub fn route(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 };
 
                 let result = result
-                    .map_err(|e| #error_type::Route(::transit_core::client::RouteErrorWrapped::wrap(e)))
+                    .map_err(|e| #error_type::Route(::std::cell::RefCell::new(Some(::transit_core::client::RouteErrorWrapped::wrap(e)))))
                     .and_then(|r| r.map_err(|e| #error_type::Protocol(e)));
 
-                let js = ::serde_wasm_bindgen::to_value(&result);
-
-                if let Err(#error_type::Route(e)) = result {
-                    ::transit_core::wbg_util::__very_unsafe_serialize_cleanup(e);
-                }
-
-                js
+                ::serde_wasm_bindgen::to_value(&result)
             }
         }
     });

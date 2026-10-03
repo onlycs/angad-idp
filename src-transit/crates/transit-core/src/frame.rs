@@ -14,6 +14,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
+pub const NOT_FOUND_BIT: u8 = 0x80;
 pub const MAX_FRAME_LEN: usize = 5 * 1024 * 1024; // 5 MiB is more than enough
 pub const MSGID_LEN: usize = 16;
 
@@ -47,6 +48,7 @@ pub enum FrameError {
 
 #[derive(Snafu, Debug)]
 pub(super) enum FrameIOError {
+    #[cfg(any(feature = "client", feature = "server"))]
     #[snafu(display("{source}"))]
     Frame {
         source: FrameError,
@@ -54,6 +56,7 @@ pub(super) enum FrameIOError {
         location: Location,
     },
 
+    #[cfg(any(feature = "client", feature = "server"))]
     #[snafu(display("Failed to read"))]
     Read {
         source: io::Error,
@@ -68,6 +71,7 @@ pub(super) enum FrameIOError {
     },
 }
 
+#[cfg(any(feature = "client", feature = "server"))]
 pub(super) async fn frame_decode<R: AsyncRead + Unpin>(
     reader: &mut R,
 ) -> Result<Vec<u8>, FrameIOError> {
@@ -105,7 +109,7 @@ pub(super) fn qframe_encode(
 
     let len_bytes = (len as FrameLen).to_le_bytes();
     let route_bytes = route.to_le_bytes();
-    let mut buf = Vec::with_capacity(len);
+    let mut buf = Vec::with_capacity(len + len_bytes.len());
 
     buf.extend(len_bytes);
     buf.extend(&msgid);
@@ -127,7 +131,7 @@ pub(super) fn pframe_encode(msgid: &MessageId, data: &[u8]) -> Result<Vec<u8>, F
         .build());
     }
 
-    let mut buf = Vec::with_capacity(len);
+    let mut buf = Vec::with_capacity(len + len_bytes.len());
     buf.extend(len_bytes);
     buf.extend(msgid);
     buf.extend(data);
@@ -137,8 +141,11 @@ pub(super) fn pframe_encode(msgid: &MessageId, data: &[u8]) -> Result<Vec<u8>, F
 
 #[cfg(feature = "client")]
 pub(super) fn gen_msgid() -> Result<MessageId, FrameError> {
-    let mut msgid = [0u8; _];
+    let mut msgid = [0u8; MSGID_LEN];
+
     getrandom::fill(&mut msgid).context(MessageIdSnafu)?;
+    msgid[0] &= !NOT_FOUND_BIT;
+
     Ok(msgid)
 }
 
@@ -154,7 +161,7 @@ pub(super) async fn pframe_deocde_thread<R: AsyncRead + Unpin + 'static>(
                 Ok(frame) => frame,
                 Err(err) => {
                     warn!(
-                        "Error reading frame, closing connection:\n{}",
+                        "Error reading frame, closing connection. Full report:\n{}",
                         snafu::Report::from_error(err).to_string()
                     );
                     notify.cancel();
@@ -168,14 +175,21 @@ pub(super) async fn pframe_deocde_thread<R: AsyncRead + Unpin + 'static>(
             }
 
             let mut tx = tx.lock().await;
-            let msgid = &frame[..MSGID_LEN];
+            let mut msgid: MessageId = frame[..MSGID_LEN].try_into().unwrap();
+            let res = match msgid[0] & NOT_FOUND_BIT {
+                0 => Some(frame[MSGID_LEN..].to_vec()),
+                _ => {
+                    msgid[0] &= !NOT_FOUND_BIT;
+                    None
+                }
+            };
 
-            let Some(tx) = tx.remove(&frame[..MSGID_LEN]) else {
+            let Some(tx) = tx.remove(&msgid) else {
                 warn!("Unknown message id {}, ignoring", hex::encode(msgid));
                 continue;
             };
 
-            let Ok(_) = tx.send(frame[MSGID_LEN..].to_vec()) else {
+            let Ok(_) = tx.send(res) else {
                 warn!("rx dropped for message {}, ignoring", hex::encode(msgid));
                 continue;
             };

@@ -2,20 +2,27 @@ use std::{
     collections::HashMap,
     io::{self, Cursor},
     mem,
+    panic::AssertUnwindSafe,
     sync::Arc,
+    time::Duration,
 };
 
-use futures_util::future::BoxFuture;
+use futures_util::{FutureExt, future::BoxFuture};
 use rustls::server::{VerifierBuilderError, WebPkiClientVerifier};
 use snafu::{Location, ResultExt, Snafu};
-use tokio::{net::TcpListener, sync::mpsc};
+use tokio::{
+    net::TcpListener,
+    sync::mpsc,
+    time::{self},
+};
 use tokio_rustls::TlsAcceptor;
 use tokio_util::{either::Either, sync::CancellationToken};
 use tracing::warn;
 
 use crate::{
-    Route,
-    frame::{self, RouteId, frame_encode_thread},
+    InternalError, InternalSnafu, Route,
+    frame::{self, MessageId, RouteId, frame_encode_thread},
+    route::FromInternal,
 };
 
 #[derive(Snafu, Debug)]
@@ -102,13 +109,6 @@ pub enum RoundTripError {
         #[snafu(implicit)]
         location: Location,
     },
-
-    #[snafu(display("Decode error"))]
-    Decode {
-        source: bitcode::Error,
-        #[snafu(implicit)]
-        location: Location,
-    },
 }
 
 #[derive(Clone)]
@@ -125,12 +125,26 @@ pub struct ListenOptions {
     pub tls: Option<ServerTls>,
 }
 
-type FnErased = *const ();
-type FnRunner = for<'a> fn(&'a [u8], FnErased) -> BoxFuture<'a, Result<Vec<u8>, bitcode::Error>>;
+#[derive(Clone, Copy)]
+struct FnErased(*const ());
+type FnRunner = for<'a> fn(&'a [u8], FnErased) -> BoxFuture<'a, Result<Vec<u8>, InternalError>>;
+type FnEncodeInternal = for<'a> fn(InternalError) -> Vec<u8>;
+
+// SAFETY: FnErased should be a function pointer without a type
+// function pointers are always safe to send and sync
+unsafe impl Send for FnErased {}
+unsafe impl Sync for FnErased {}
+
+#[derive(Clone, Copy)]
+pub struct RouteThunk {
+    erased: FnErased,
+    internal: FnEncodeInternal,
+    runner: FnRunner,
+}
 
 #[derive(Default)]
 pub struct Router {
-    routes: HashMap<RouteId, (FnRunner, FnErased)>,
+    routes: HashMap<RouteId, RouteThunk>,
 }
 
 impl Router {
@@ -144,36 +158,50 @@ impl Router {
     ) -> &mut Self {
         self.routes.insert(
             R::ID,
-            (
-                |bytes, erased| {
+            RouteThunk {
+                runner: |bytes, FnErased(erased)| {
                     let handler: fn(R::Request) -> F = unsafe { mem::transmute(erased) };
 
                     Box::pin(async move {
-                        let req: R::Request = bitcode::decode(bytes)?;
+                        let req: R::Request = bitcode::decode(bytes).context(InternalSnafu)?;
                         let res = handler(req).await;
                         Ok(bitcode::encode(&res))
                     })
                 },
-                handler as *const (),
-            ),
+                internal: |error| {
+                    bitcode::encode(&<R::Response as FromInternal>::from_internal(error))
+                },
+                erased: FnErased(handler as *const ()),
+            },
         );
         self
     }
 
-    pub fn run<'a>(
-        &'a self,
-        route_id: RouteId,
-        data: &'a [u8],
-    ) -> BoxFuture<'a, Result<Vec<u8>, bitcode::Error>> {
-        let (runner, erased) = self.routes.get(&route_id).unwrap();
-        runner(data, *erased)
+    /// No data if and only if the route is not found.
+    pub async fn run<'a>(&'a self, route_id: RouteId, data: &'a [u8]) -> Option<Vec<u8>> {
+        let RouteThunk {
+            erased,
+            internal: internal_ser,
+            runner,
+        } = *self.routes.get(&route_id)?;
+
+        let res = AssertUnwindSafe(runner(data, erased)).catch_unwind().await;
+        let bytes = match res {
+            Ok(Ok(bytes)) if bytes.len() + mem::size_of::<MessageId>() <= frame::MAX_FRAME_LEN => {
+                bytes
+            }
+            Ok(Ok(_)) => internal_ser(InternalError {
+                message: "response too large".to_string(),
+            }),
+            Ok(Err(internal)) => internal_ser(internal),
+            Err(_) => internal_ser(InternalError {
+                message: "server panicked while responding".to_string(),
+            }),
+        };
+
+        Some(bytes)
     }
 }
-
-unsafe impl Send for Router {}
-unsafe impl Sync for Router {}
-
-pub struct Listener {}
 
 pub async fn listen(
     ListenOptions { addr, port, tls }: ListenOptions,
@@ -226,8 +254,13 @@ pub async fn listen(
     };
 
     loop {
-        let Ok((stream, _)) = listener.accept().await else {
-            continue;
+        let stream = match listener.accept().await {
+            Ok((stream, _)) => stream,
+            Err(err) => {
+                warn!("Failed to accept connection: {}", err);
+                time::sleep(Duration::from_millis(500)).await;
+                continue;
+            }
         };
 
         let router = Arc::clone(&router);
@@ -236,7 +269,12 @@ pub async fn listen(
         tokio::spawn(async move {
             let (mut read, write) = match acceptor {
                 Some(acceptor) => {
-                    let tls = acceptor.accept(stream).await.context(TlsSnafu)?;
+                    let tls = time::timeout(Duration::from_secs(10), acceptor.accept(stream))
+                        .await
+                        .map_err(|_| io::Error::from(io::ErrorKind::TimedOut))
+                        .flatten()
+                        .context(TlsSnafu)?;
+
                     let (read, write) = tokio::io::split(tls);
                     (Either::Right(read), Either::Right(write))
                 }
@@ -256,7 +294,7 @@ pub async fn listen(
                     Ok(fr) => fr,
                     Err(e) => {
                         warn!(
-                            "Failed to decode frame, closing connection\n{}",
+                            "Failed to decode frame, closing connection. Full report:\n{}",
                             snafu::Report::from_error(e).to_string()
                         );
                         cancel.cancel();
@@ -268,21 +306,34 @@ pub async fn listen(
                 let cancel = cancel.clone();
                 let tx = tx.clone();
 
-                tokio::spawn(async move {
-                    let routeid_end = frame::MSGID_LEN + size_of::<RouteId>();
+                let routeid_end = frame::MSGID_LEN + size_of::<RouteId>();
+                if fr.len() < routeid_end {
+                    warn!("Request frame too short, closing connection");
+                    cancel.cancel();
+                    break;
+                }
 
+                tokio::spawn(async move {
                     let msgid = &fr[..frame::MSGID_LEN].try_into().unwrap();
                     let route_id = &fr[frame::MSGID_LEN..routeid_end].try_into().unwrap();
                     let data = &fr[routeid_end..];
 
-                    let route_id = RouteId::from_le_bytes(*route_id);
-                    let result = router.run(route_id, data).await.context(DecodeSnafu)?;
+                    let mut msgid: MessageId = *msgid;
 
-                    let buf = match frame::pframe_encode(msgid, result.as_slice()) {
+                    let route_id = RouteId::from_le_bytes(*route_id);
+                    let result = match router.run(route_id, data).await {
+                        Some(result) => result,
+                        None => {
+                            msgid[0] |= frame::NOT_FOUND_BIT;
+                            vec![]
+                        }
+                    };
+
+                    let buf = match frame::pframe_encode(&msgid, result.as_slice()) {
                         Ok(buf) => buf,
                         Err(e) => {
                             warn!(
-                                "Failed to encode frame\n{}",
+                                "Failed to encode frame. Full report:\n{}",
                                 snafu::Report::from_error(&e).to_string()
                             );
 

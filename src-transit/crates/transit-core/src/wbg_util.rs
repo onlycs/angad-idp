@@ -1,11 +1,6 @@
-use std::mem;
+use std::cell::RefCell;
 
-use wasm_bindgen::{
-    __rt::{WasmPtr, WasmRefCell},
-    JsValue,
-    convert::IntoWasmAbi,
-    prelude::*,
-};
+use wasm_bindgen::{JsValue, prelude::*};
 
 use crate::client::RouteErrorWrapped;
 
@@ -18,21 +13,22 @@ extern "C" {
     fn __transit_identity(x: RouteErrorWrapped) -> JsValue;
 }
 
-pub fn __very_unsafe_serialize<S: serde::Serializer>(
-    val: &RouteErrorWrapped,
+pub fn serialize_wrapper<S: serde::Serializer>(
+    val: &RefCell<Option<RouteErrorWrapped>>,
     ser: S,
 ) -> Result<S::Ok, S::Error> {
     // It's responsibility of serde-wasm-bindgen's Serializer to clone the
     // value. For all other serializers, using reference instead of cloning
     // here will ensure that we don't create accidental leaks.
 
-    // dont know what that^ means, i shouldnt have had to write this.
-    let own = unsafe { std::ptr::read(val as *const RouteErrorWrapped) };
+    // dont know what that^ means, but i do know i shouldn't have had to write
+    // this.
+    let own = val
+        .borrow_mut()
+        .take()
+        .expect("serialize_wrapper: value already serialized");
+
     let jsv = __transit_identity(own);
 
     serde_wasm_bindgen::preserve::serialize(&jsv, ser)
-}
-
-pub fn __very_unsafe_serialize_cleanup<T: IntoWasmAbi<Abi = WasmPtr<WasmRefCell<T>>>>(it: T) {
-    mem::forget(it);
 }
