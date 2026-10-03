@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	"angad.page/transit/transit_core"
 )
 
@@ -14,6 +16,6 @@ func main() {
 	})
 
 	if err != nil {
-		err.Tag()
+		fmt.Printf("Idk bro ive never written go before: \n%v", err.Report())
 	}
 }

@@ -17,27 +17,26 @@ help:
 	@echo "  api            - Build API"
 	@echo "  fmt            - Format everything"
 
-transit-wasm:
-	@echo "=== Building transit for wasm32"
-	cd src-transit && cargo build -p transit-proto --release --features client --target wasm32-unknown-unknown
+proto-wasm:
+	@echo "=== Building proto for wasm32"
+	cd src-proto && cargo build -p idp-proto --release --features client --target wasm32-unknown-unknown
 
-transit-native:
-	@echo "=== Building transit for native"
-	cd src-transit && cargo build -p transit-proto --release --features server,client,uniffi
+proto-native:
+	@echo "=== Building proto for native"
+	cd src-proto && cargo build -p idp-proto --release --features client,uniffi
 
-transit: transit-wasm transit-native
+proto: proto-wasm proto-native
 
-ldap: transit-native
+ldap: proto-native
 	@echo "=== Cleaning bindings"
 	find src-ldap/transit -mindepth 1 -maxdepth 1 ! -name 'go.mod' ! -name '.gitignore' -exec rm -rf -- {} +
 	@echo "=== Generating bindings"
-	cd src-transit && uniffi-bindgen-go target/release/libtransit_proto.so -o ../src-ldap/transit -c ../src-ldap/uniffi.toml
+	cd src-proto && uniffi-bindgen-go target/release/libidp_proto.so -o ../src-ldap/transit -c ../src-ldap/uniffi.toml
 	@echo "=== Building"
-	cd src-ldap && go mod tidy
+	cd src-ldap && go mod tidy && rm idp-ldap
 	cd src-ldap && \
-		LD_LIBRARY_PATH="$(LD_LIBRARY_PATH):$(PWD)/src-transit/target/release" \
-		CGO_LDFLAGS="-ltransit_proto -L$(PWD)/src-transit/target/release -lm -ldl" \
-		CGO_ENABLED=1 \
+    	CGO_LDFLAGS="$(PWD)/src-proto/target/release/libidp_proto.a -lm -ldl -lpthread" \
+    	CGO_ENABLED=1 \
 		go build
 
 wasm:
