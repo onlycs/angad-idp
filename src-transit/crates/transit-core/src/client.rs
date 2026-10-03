@@ -98,7 +98,7 @@ impl TransitOptions {
         }
     }
 
-    #[wasm_bindgen(constructor)]
+    #[wasm_bindgen(js_name = "withTimeout")]
     pub fn new_with_timeout(connect: ConnectOptions, timeout_ms: u64) -> Self {
         Self {
             connect,

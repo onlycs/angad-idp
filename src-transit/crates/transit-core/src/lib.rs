@@ -21,6 +21,9 @@ pub mod client;
 #[cfg(feature = "server")]
 pub mod server;
 
+#[cfg(target_family = "wasm")]
+pub mod wbg_util;
+
 pub mod frame;
 
 pub use transit_macros::{error, error_shard, oneof, record, route};

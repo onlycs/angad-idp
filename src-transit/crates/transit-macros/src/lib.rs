@@ -81,13 +81,13 @@ pub fn error_shard(
         #tokens
 
         #[cfg(feature = "uniffi")]
-        #[uniffi::export]
+        #[::uniffi::export]
         pub fn #ident_display (error: #ident) -> String {
             format!("{error}")
         }
 
         #[cfg(feature = "uniffi")]
-        #[uniffi::export]
+        #[::uniffi::export]
         pub fn #ident_report (error: #ident) -> String {
             snafu::Report::from_error(&error).to_string()
         }
@@ -215,7 +215,6 @@ pub fn error(tokens1: proc_macro::TokenStream) -> proc_macro::TokenStream {
             #[cfg_attr(target_family = "wasm", derive(::serde::Serialize, ::serde::Deserialize, ::tsify::Tsify))]
             #[cfg_attr(target_family = "wasm", serde(tag = "tag"))]
             #[cfg_attr(feature = "uniffi", derive(::uniffi::Error))]
-            #[cfg_attr(feature = "uniffi", uniffi(flat_error))]
             #[snafu(visibility(pub))]
             #[snafu(module)]
             pub enum #name {
@@ -294,6 +293,7 @@ pub fn route(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
         let function = format_ident!("route_{}", name.to_string().to_snake_case());
         let result_type = format_ident!("{}Result", name);
         let error_type = format_ident!("{}FfiError", name);
+        let error_binding_type = format_ident!("_{}FfiErrorAlias", name);
         let js_return_type = result_type.to_string();
 
         quote! {
@@ -305,10 +305,20 @@ pub fn route(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
             }
 
             #[cfg(feature = "uniffi")]
-            #[derive(Debug, ::uniffi::Error)]
+            type #error_binding_type = ::std::sync::Arc<::transit_core::client::RouteError>;
+            #[cfg(target_family = "wasm")]
+            type #error_binding_type = ::transit_core::client::RouteErrorWrapped;
+
+            #[cfg(any(feature = "uniffi", target_family = "wasm"))]
+            #[derive(Debug)]
+            #[cfg_attr(feature = "uniffi", derive(::uniffi::Error))]
+            #[cfg_attr(target_family = "wasm", derive(::serde::Serialize))]
             pub enum #error_type {
                 Protocol(#response_e),
-                Route(::std::sync::Arc<::transit_core::client::RouteError>),
+                Route(
+                    #[cfg_attr(target_family = "wasm", serde(serialize_with = "::transit_core::wbg_util::__very_unsafe_serialize"))]
+                    #error_binding_type
+                ),
             }
 
             #[cfg(feature = "uniffi")]
@@ -342,12 +352,11 @@ pub fn route(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
             #[cfg(target_family = "wasm")]
             #[::tsify::declare]
-            pub type #result_type = Result<#response_t, #response_e>;
+            pub type #result_type = Result<#response_t, #error_type>;
 
             #[cfg(target_family = "wasm")]
             #[::wasm_bindgen::prelude::wasm_bindgen(unchecked_return_type = #js_return_type)]
-            pub async fn #function(t: &::transit_core::client::Transit, req: ::tsify::Ts<#request>)
-                -> Result<::wasm_bindgen::JsValue, ::transit_core::client::RouteErrorWrapped>
+            pub async fn #function(t: &::transit_core::client::Transit, req: ::tsify::Ts<#request>) -> Result<::wasm_bindgen::JsValue, ::serde_wasm_bindgen::Error>
             {
                 let result = match req.to_rust() {
                     Ok(req) => t.route::<#name>(req).await,
@@ -356,15 +365,17 @@ pub fn route(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
                     }),
                 };
 
-                result
-                    .and_then(|response| {
-                        ::serde_wasm_bindgen::to_value(&response).map_err(|error| {
-                            ::transit_core::client::RouteError::Serialization {
-                                message: error.to_string(),
-                            }
-                        })
-                    })
-                    .map_err(::transit_core::client::RouteErrorWrapped::wrap)
+                let result = result
+                    .map_err(|e| #error_type::Route(::transit_core::client::RouteErrorWrapped::wrap(e)))
+                    .and_then(|r| r.map_err(|e| #error_type::Protocol(e)));
+
+                let js = ::serde_wasm_bindgen::to_value(&result);
+
+                if let Err(#error_type::Route(e)) = result {
+                    ::transit_core::wbg_util::__very_unsafe_serialize_cleanup(e);
+                }
+
+                js
             }
         }
     });
@@ -390,7 +401,7 @@ pub fn core_error(
         #item
 
         #[cfg(feature = "uniffi")]
-        #[uniffi::export]
+        #[::uniffi::export]
         impl #ident {
             pub fn tag(&self) -> #ident_tag {
                 ::strum::IntoDiscriminant::discriminant(self)
@@ -402,6 +413,8 @@ pub fn core_error(
         }
 
         #[cfg(target_family = "wasm")]
+        #[derive(Debug)]
+        #[::wasm_bindgen::prelude::wasm_bindgen]
         pub struct #ident_wrap {
             error: #ident,
             #[wasm_bindgen(getter)]
@@ -419,18 +432,19 @@ pub fn core_error(
         }
 
         #[cfg(target_family = "wasm")]
+        #[::wasm_bindgen::prelude::wasm_bindgen]
         impl #ident_wrap {
-            #[wasm_bindgen(getter)]
+            #[::wasm_bindgen::prelude::wasm_bindgen(getter)]
             pub fn report(&self) -> String {
                 ::snafu::Report::from_error(&self.error).to_string()
             }
 
-            #[wasm_bindgen(getter)]
+            #[::wasm_bindgen::prelude::wasm_bindgen(getter)]
             pub fn message(&self) -> String {
                 format!("{}", self.error)
             }
 
-            #[wasm_bindgen(unchecked_return_type = "never")]
+            #[::wasm_bindgen::prelude::wasm_bindgen(unchecked_return_type = "never")]
             pub fn raise(&self) -> JsValue {
                 ::wasm_bindgen::throw_str(&::snafu::Report::from_error(&self.error).to_string());
             }

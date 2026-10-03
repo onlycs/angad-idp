@@ -1,6 +1,6 @@
-import type { CryptoFunction, WorkerMessage, WorkerResponse } from "$lib/crypto/worker";
+import type { CryptoFunction, WorkerMessage, WorkerResponse } from "$lib/wasm/worker";
 
-type CryptoJs = typeof import("$wasm/crypto");
+type CryptoJs = typeof import("$wasm/libidp");
 type Awaited<R> = R extends Promise<infer T> ? T : R;
 type AsyncCryptoModule = {
     [K in CryptoFunction]: (
@@ -16,7 +16,7 @@ export class CryptoWorker {
     private id = 0;
 
     constructor(oninit: (fns: CryptoFunction[]) => void = () => {}) {
-        this.worker = new Worker(new URL("../workers/auth-crypto.ts", import.meta.url), {
+        this.worker = new Worker(new URL("worker.ts", import.meta.url), {
             type: "module",
         });
 

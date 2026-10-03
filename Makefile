@@ -1,8 +1,21 @@
 SHELL := bash
 
-.PHONY: all wasm grpc fmt palette postinstall
+.PHONY: help
+.PHONY: transit transit-wasm transit-native
+.PHONY: ldap wasm api
+.PHONY: fmt postinstall
 
-all: build
+help:
+	@echo "Usage: make [target]"
+	@echo "Targets:"
+	@echo "  help           - Show this help message"
+	@echo "  transit        - Build transit for wasm32 and native"
+	@echo "  transit-wasm   - Build transit for wasm32"
+	@echo "  transit-native - Build transit for native"
+	@echo "  ldap           - Build the go ldap binary"
+	@echo "  wasm           - Build WASM package and generate bindings"
+	@echo "  api            - Build API"
+	@echo "  fmt            - Format everything"
 
 transit-wasm:
 	@echo "=== Building transit for wasm32"
@@ -29,16 +42,13 @@ ldap: transit-native
 
 wasm:
 	@echo "=== Building WASM package"
-	cd src-crypto && rm -rf pkg && wasm-pack build --target web --release --out-name crypto
+	cd src-wasm && rm -rf pkg && wasm-pack build --target web --release --out-name libidp
 	@echo "=== Copying package files"
 	rm -rf static/wasm
 	mkdir -p static
-	cp -r src-crypto/pkg static/wasm
+	cp -r src-wasm/pkg static/wasm
 	@echo "=== Patching workerHelpers.js files"
-	sed -i 's|\.\./\.\./\.\.|../../../crypto.js|g' static/wasm/snippets/*/src/workerHelpers.js
-
-grpc:
-	@echo "=== TODO (grpc)"
+	sed -i 's|\.\./\.\./\.\.|../../../libidp.js|g' static/wasm/snippets/*/src/workerHelpers.js
 
 fmt:
 	@echo "=== Formatting code"
@@ -56,4 +66,4 @@ build:
 	@echo "=== Building frontend"
 	bun generate
 
-postinstall: grpc wasm
+postinstall: wasm
