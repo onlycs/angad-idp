@@ -19,11 +19,11 @@ help:
 
 proto-wasm:
 	@echo "=== Building proto for wasm32"
-	cd src-proto && cargo build -p idp-proto --release --features client --target wasm32-unknown-unknown
+	cd src-proto && cargo build --release --features client --target wasm32-unknown-unknown
 
 proto-native:
 	@echo "=== Building proto for native"
-	cd src-proto && cargo build -p idp-proto --release --features client,uniffi
+	cd src-proto && cargo build --release --features client,uniffi
 
 proto: proto-wasm proto-native
 
@@ -49,6 +49,10 @@ wasm:
 	@echo "=== Patching workerHelpers.js files"
 	sed -i 's|\.\./\.\./\.\.|../../../libidp.js|g' static/wasm/snippets/*/src/workerHelpers.js
 
+api:
+	@echo "=== Building the API"
+	cd src-idp && cargo build --release
+
 fmt:
 	@echo "=== Formatting code"
 	bun fmt
@@ -57,14 +61,11 @@ fmt:
 	cd src-ldap && go fmt
 	cd src-proto && cargo fmt
 
-build:
-	@echo "=== Building the API"
-	cd src-api && cargo build --release
-
+build: api wasm ldap
 	@echo "=== Installing dependencies"
 	bun i # will run `make postinstall` (see package.json)
 
 	@echo "=== Building frontend"
 	bun generate
 
-postinstall: wasm
+postinstall: wasm fmt

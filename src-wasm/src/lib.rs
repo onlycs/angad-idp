@@ -10,7 +10,7 @@ use snafu::ErrorCompat;
 use wasm_bindgen::prelude::*;
 pub use wasm_bindgen_rayon::init_thread_pool;
 
-extern crate transit_proto;
+extern crate idp_proto;
 
 #[wasm_bindgen(start)]
 fn init() {
