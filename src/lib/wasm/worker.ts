@@ -26,10 +26,7 @@ export type WasmFunction = Exclude<
 >;
 
 function operationOk(op: string): boolean {
-    return (
-        !WasmFunctionExcludes.includes(op as any) &&
-        typeof (libidp as any)[op] === "function"
-    );
+    return !WasmFunctionExcludes.includes(op as any) && typeof (libidp as any)[op] === "function";
 }
 
 function init(): Promise<void> {

@@ -1,6 +1,8 @@
-# rust projects
+# rust and go projects
 src-api/**
 src-wasm/**
+src-proto/**
+src-ldap/**
 
 # filetypes
 **/*.toml

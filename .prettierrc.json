@@ -6,7 +6,6 @@
         "prettier-plugin-svelte",
         "prettier-plugin-tailwindcss"
     ],
-    "tailwindStylesheet": "app/style/main.css",
     "tailwindFunctions": ["cn"],
     "printWidth": 100,
     "overrides": [
