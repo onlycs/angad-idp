@@ -21,10 +21,7 @@ fn init_logger() {
     #[cfg(not(debug_assertions))]
     const LOG_LEVEL: tracing::Level = tracing::Level::INFO;
 
-    #[cfg(debug_assertions)]
     let fmt = tracing_subscriber::fmt::layer().pretty();
-    #[cfg(not(debug_assertions))]
-    let fmt = tracing_subscriber::fmt::layer().json();
 
     let filter = Targets::new()
         .with_default(LOG_LEVEL)

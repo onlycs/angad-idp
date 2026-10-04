@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	transit_core.BeginLogging(transit_core.LogLevelTrace)
+	transit_core.BeginLogging(transit_core.LogLevelInfo)
 
 	tr, err := transit_core.Connect(transit_core.TransitOptions{
 		Connect: transit_core.ConnectOptions{
