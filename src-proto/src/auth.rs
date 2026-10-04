@@ -1,16 +1,48 @@
+use std::ops::Deref;
+
 use transit_core::{error, oneof, record, route};
 
 use crate::user::{NoUser, UserQuery};
 
 #[oneof]
+#[derive(Copy, PartialEq, Eq)]
+pub enum AccessLevel {
+    Read,
+    ReadWrite,
+}
+
+#[record]
+pub struct TokenRaw {
+    pub uid: String,
+    pub username: String,
+    pub email: String,
+    /// Unix timestamp in milliseconds
+    pub exp: u64,
+}
+
+#[record]
+pub struct Token {
+    pub raw: TokenRaw,
+    pub sig: Vec<u8>,
+}
+
+impl Deref for Token {
+    type Target = TokenRaw;
+
+    fn deref(&self) -> &Self::Target {
+        &self.raw
+    }
+}
+
+#[oneof]
 pub enum Authentication {
-    Token(String),
+    Token(Token),
     Integration(String),
 }
 
 #[oneof]
 pub enum AuthenticationStrict {
-    Password(String),
+    Password { uid: String, password: String },
     Integration(String),
 }
 

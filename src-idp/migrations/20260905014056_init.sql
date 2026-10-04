@@ -8,6 +8,7 @@ CREATE TABLE users (
     password_hash   text not null,
 
     -- timestamps
+    updated_at  timestamptz not null    DEFAULT now(),
     created_at  timestamptz not null    DEFAULT now()
 );
 
@@ -25,7 +26,7 @@ CREATE TABLE applications_oidc (
 
     -- authelia generation
     client_secret   text not null,
-    redirect_uris   text[] not null,
+    redirect_uris   text[] not null
 );
 
 CREATE TABLE roles (
@@ -59,5 +60,5 @@ CREATE TABLE invite_roles (
     PRIMARY KEY (invite, application)
 );
 
-INSERT INTO applications (slug, name)
-VALUES ("domain", "Domain");
+INSERT INTO applications (slug, name, url)
+VALUES ('domain', 'Domain', '');

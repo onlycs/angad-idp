@@ -16,8 +16,8 @@ server = ["transit-core/server"]
 
 [dependencies]
 bitcode = "0.6.9"
-snafu = "0.9.2"
-transit-core = { git = "https://codeberg.org/tendulkar/transit" }
+snafu = { version = "0.9.2", features = ["unstable-provider-api"] }
+transit-core = { git = "https://codeberg.org/tendulkar/transit", features = ["nightly"] }
 xxhash-rust = { version = "0.8.18", features = ["const_xxh3"] }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]

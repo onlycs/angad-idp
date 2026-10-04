@@ -16,7 +16,6 @@ pub struct User {
 }
 
 #[oneof]
-#[derive(Debug)]
 pub enum UserQuery {
     Uid(String),
     Username(String),

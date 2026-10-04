@@ -1,3 +1,5 @@
+#![feature(error_generic_member_access)]
+
 #[cfg(all(target_family = "wasm", feature = "uniffi"))]
 compile_error!("`wasm32` is not compatible with `uniffi`");
 

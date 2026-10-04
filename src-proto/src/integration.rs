@@ -1,19 +1,22 @@
 use transit_core::{error, record, route};
 
-use crate::{auth::Authentication, error::Denied};
+use crate::{
+    auth::{AccessLevel, Authentication},
+    error::Denied,
+};
 
 #[record]
 pub struct Integration {
     pub id: String,
     pub name: String,
-    pub readonly: bool,
+    pub access: AccessLevel,
 }
 
 #[record]
 pub struct IntegrationCreateRequest {
     pub auth: Authentication,
     pub name: String,
-    pub readonly: bool,
+    pub access: AccessLevel,
 }
 
 #[record]
@@ -27,7 +30,7 @@ pub struct IntegrationUpdateRequest {
     pub auth: Authentication,
     pub id: String,
     pub name: Option<String>,
-    pub readonly: Option<bool>,
+    pub access: Option<AccessLevel>,
 }
 
 #[record]

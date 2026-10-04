@@ -10,7 +10,7 @@ pub struct Membership {
 
 #[record]
 pub struct ApplicationOidc {
-    pub redirect_uri: Vec<String>,
+    pub redirect_uris: Vec<String>,
 }
 
 #[record]
