@@ -2,7 +2,7 @@
 
 use std::env;
 
-use idp_proto::app::ApplicationCreate;
+use idp_proto::app::{ApplicationCreate, ApplicationDelete, ApplicationList, ApplicationUpdate};
 use snafu::ResultExt;
 use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::SubscriberInitExt};
 use transit_core::{
@@ -41,6 +41,9 @@ async fn main() -> Result<(), InternalError> {
 
     let router = Router::new(pool)
         .route::<ApplicationCreate, _>(app::create)
+        .route::<ApplicationList, _>(app::list)
+        .route::<ApplicationUpdate, _>(app::update)
+        .route::<ApplicationDelete, _>(app::delete)
         .build();
 
     server::listen_tcp_tls(

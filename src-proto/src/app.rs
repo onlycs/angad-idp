@@ -33,12 +33,6 @@ pub struct ApplicationCreateResponse {
 }
 
 #[record]
-pub struct ApplicationSearchRequest {
-    pub auth: Authentication,
-    pub slug: String,
-}
-
-#[record]
 pub struct ApplicationUpdateRequest {
     pub auth: Authentication,
     pub slug: String,
@@ -63,6 +57,7 @@ pub struct ApplicationDeleteRequest {
 
 error! {
     NoApplication("Application {slug:?} not found") { slug: String };
+    NoApplicationOidc("Application {slug:?} does not have OIDC") { slug: String };
 
     InvalidSlug("Invalid slug");
     InvalidAppName("Invalid name");
@@ -73,15 +68,13 @@ error! {
 
     ApplicationCreateError = InvalidSlug | InvalidAppName | InvalidUrl | InvalidRedirectUri | SlugInUse | AppNameInUse | Denied;
     ApplicationListError = Denied;
-    ApplicationSearchError = NoApplication | Denied;
-    ApplicationUpdateError = NoApplication | InvalidAppName | InvalidUrl | InvalidRedirectUri | AppNameInUse | Denied;
+    ApplicationUpdateError = NoApplication | NoApplicationOidc | InvalidAppName | InvalidUrl | InvalidRedirectUri | AppNameInUse | Denied;
     ApplicationDeleteError = NoApplication | Denied;
 }
 
 route! {
     ApplicationCreate(ApplicationCreateRequest) -> Result<ApplicationCreateResponse, ApplicationCreateError>;
     ApplicationList(Authentication) -> Result<Vec<Application>, ApplicationListError>;
-    ApplicationSearch(ApplicationSearchRequest) -> Result<Application, ApplicationSearchError>;
     ApplicationUpdate(ApplicationUpdateRequest) -> Result<ApplicationUpdateResponse, ApplicationUpdateError>;
     ApplicationDelete(ApplicationDeleteRequest) -> Result<(), ApplicationDeleteError>;
 }

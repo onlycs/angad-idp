@@ -1747,8 +1747,6 @@ dependencies = [
 [[package]]
 name = "sqlx"
 version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "378620ccc25c62c89d8be1c819e76a88d59bdcc3304733330788948e619bfd71"
 dependencies = [
  "sqlx-core",
  "sqlx-macros",
@@ -1760,8 +1758,6 @@ dependencies = [
 [[package]]
 name = "sqlx-core"
 version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05b44e85bf579a8eeb4ceaa77a3a523baf2bf0e9bac7e40f405d537b5d2d5ccb"
 dependencies = [
  "base64",
  "bytes",
@@ -1795,8 +1791,6 @@ dependencies = [
 [[package]]
 name = "sqlx-macros"
 version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd2b84f2bc39a5705ef27ec785a11c934a41bbd4a24941e257927cddc26b60bf"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1808,8 +1802,6 @@ dependencies = [
 [[package]]
 name = "sqlx-macros-core"
 version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb8d96de5fdc85a5c4ec813432b523ec637e80ba98f046555f75f7908ddac7c3"
 dependencies = [
  "cfg-if",
  "dotenvy",
@@ -1834,8 +1826,6 @@ dependencies = [
 [[package]]
 name = "sqlx-mysql"
 version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90b8020fe17c5f2c245bfa2505d7ef59c5604839527c740266ad2214acebea27"
 dependencies = [
  "bitflags",
  "byteorder",
@@ -1861,8 +1851,6 @@ dependencies = [
 [[package]]
 name = "sqlx-postgres"
 version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87a2bdd6e83f6b3ea525ca9fee568030508b58355a43d0b2c1674d5f79dcd65e"
 dependencies = [
  "atoi",
  "base64",
@@ -1897,8 +1885,6 @@ dependencies = [
 [[package]]
 name = "sqlx-sqlite"
 version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "488e99c397a62007e4229aec669a179816339afc6d2620ca6fa420dbee2e982c"
 dependencies = [
  "atoi",
  "chrono",
@@ -2203,7 +2189,7 @@ dependencies = [
 [[package]]
 name = "transit-core"
 version = "0.1.0"
-source = "git+https://codeberg.org/tendulkar/transit#e13e419681207ad4d4fac3c824f3d5075890b5f7"
+source = "git+https://codeberg.org/tendulkar/transit#60c5d0013acfc1cfa19a010cf009173cd531fbbb"
 dependencies = [
  "bitcode",
  "futures-util",
@@ -2234,7 +2220,7 @@ dependencies = [
 [[package]]
 name = "transit-macros"
 version = "0.1.0"
-source = "git+https://codeberg.org/tendulkar/transit#e13e419681207ad4d4fac3c824f3d5075890b5f7"
+source = "git+https://codeberg.org/tendulkar/transit#60c5d0013acfc1cfa19a010cf009173cd531fbbb"
 dependencies = [
  "heck",
  "itertools",

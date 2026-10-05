@@ -49,7 +49,13 @@ wasm:
 	@echo "=== Patching workerHelpers.js files"
 	sed -i 's|\.\./\.\./\.\.|../../../libidp.js|g' static/wasm/snippets/*/src/workerHelpers.js
 
-api:
+thirdparty/sqlx:
+	@echo "=== Preparing/patching SQLx"
+	cd thirdparty && git clone https://github.com/launchbadge/sqlx
+	cd thirdparty/sqlx && git checkout v0.9.0
+	cd thirdparty/sqlx && cat ../sqlx-join-type-inference.patch | git am -3 --no-gpg-sign
+
+api: thirdparty/sqlx
 	@echo "=== Building the API"
 	cd src-idp && cargo build --release
 

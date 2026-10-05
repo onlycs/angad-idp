@@ -6,7 +6,7 @@ use snafu::ResultExt;
 use sqlx::PgPool;
 use transit_core::{InternalError, InternalErrorMessage};
 
-use crate::token;
+use crate::{strings, token};
 
 pub async fn authenticate(
     auth: Authentication,
@@ -24,9 +24,8 @@ pub async fn authenticate(
             {
                 Ok(updated) => updated,
                 Err(sqlx::Error::RowNotFound) => return Ok(Err(Denied)),
-                other => {
-                    other.context(InternalErrorMessage!("Error communicating with DB"))?;
-                    snafu::whatever!("Unknown error")
+                Err(other) => {
+                    return Err(InternalErrorMessage!(ctx(display other), strings::ERROR_DB));
                 }
             };
 
@@ -49,9 +48,8 @@ pub async fn authenticate(
             let auth = match res {
                 Ok(auth) => auth,
                 Err(sqlx::Error::RowNotFound) => return Ok(Err(Denied)),
-                other => {
-                    other.context(InternalErrorMessage!("Error communicating with DB"))?;
-                    snafu::whatever!("Unknown error")
+                Err(other) => {
+                    return Err(InternalErrorMessage!(ctx(display other), strings::ERROR_DB));
                 }
             };
 
