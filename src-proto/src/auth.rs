@@ -52,16 +52,11 @@ pub struct AuthenticateRequest {
     pub password: String,
 }
 
-#[record]
-pub struct AuthenticateResponse {
-    pub jwt: String,
-}
-
 error! {
     BadPassword("Incorrect password");
     AuthenticateError = NoUser | BadPassword;
 }
 
 route! {
-    Authenticate(AuthenticateRequest) -> Result<AuthenticateResponse, AuthenticateError>;
+    Authenticate(AuthenticateRequest) -> Result<Token, AuthenticateError>;
 }

@@ -539,9 +539,9 @@ checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
 name = "either"
-version = "1.18.0"
+version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "252afb9ae5eaa683babdc6a068b3f5726eb19e05070c731f9b2a23a7c3e8ed34"
+checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
 
 [[package]]
 name = "equivalent"
@@ -756,9 +756,9 @@ dependencies = [
 
 [[package]]
 name = "glam"
-version = "0.34.0"
+version = "0.34.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eece6af6447501f08d55ff4f6aed8a2753e4224e51899bccf3d5ae3d2de564b1"
+checksum = "fc148d4ddd3930c52f9e5ae79b89805c6f07e9ff417e7b083e0348cea60a5aba"
 
 [[package]]
 name = "glob"
@@ -1266,9 +1266,9 @@ dependencies = [
 
 [[package]]
 name = "powerfmt"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
+checksum = "4a6394b9e965e73d0a289ee54f589087e2c676aedf60885baf52c76b771e4958"
 
 [[package]]
 name = "proc-macro2"
@@ -2109,7 +2109,7 @@ dependencies = [
 [[package]]
 name = "transit-core"
 version = "0.1.0"
-source = "git+https://codeberg.org/tendulkar/transit#e13e419681207ad4d4fac3c824f3d5075890b5f7"
+source = "git+https://codeberg.org/tendulkar/transit#424bf3f07d85defdda7d84a5f6eda89b00fea131"
 dependencies = [
  "async-executor",
  "async-io",
@@ -2149,7 +2149,7 @@ dependencies = [
 [[package]]
 name = "transit-macros"
 version = "0.1.0"
-source = "git+https://codeberg.org/tendulkar/transit#e13e419681207ad4d4fac3c824f3d5075890b5f7"
+source = "git+https://codeberg.org/tendulkar/transit#424bf3f07d85defdda7d84a5f6eda89b00fea131"
 dependencies = [
  "heck",
  "itertools",
@@ -2763,9 +2763,9 @@ dependencies = [
 
 [[package]]
 name = "zeroize"
-version = "1.9.0"
+version = "1.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e13c156562582aa81c60cb29407084cdb54c4164760106ab78e6c5b0858cf64e"
+checksum = "e13084392c5e4bc371903e2935a5eaeed24905a7511356b883835e18a78f6879"
 
 [[package]]
 name = "zerotrie"

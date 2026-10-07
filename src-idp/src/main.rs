@@ -1,8 +1,11 @@
-#![feature(error_generic_member_access)]
+#![feature(error_generic_member_access, duration_constructors)]
 
 use std::env;
 
-use idp_proto::app::{ApplicationCreate, ApplicationDelete, ApplicationList, ApplicationUpdate};
+use idp_proto::{
+    app::{ApplicationCreate, ApplicationDelete, ApplicationList, ApplicationUpdate},
+    auth::Authenticate,
+};
 use snafu::ResultExt;
 use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::SubscriberInitExt};
 use transit_core::{
@@ -14,6 +17,7 @@ mod app;
 mod auth;
 mod strings;
 mod token;
+mod user;
 
 fn init_logger() {
     #[cfg(debug_assertions)]
@@ -44,6 +48,7 @@ async fn main() -> Result<(), InternalError> {
         .route::<ApplicationList, _>(app::list)
         .route::<ApplicationUpdate, _>(app::update)
         .route::<ApplicationDelete, _>(app::delete)
+        .route::<Authenticate, _>(auth::route)
         .build();
 
     server::listen_tcp_tls(

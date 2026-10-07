@@ -6,7 +6,7 @@ use idp_proto::{
 };
 use snafu::prelude::*;
 use sqlx::PgPool;
-use transit_core::{InternalError, InternalErrorMessage};
+use transit_core::{InternalError, InternalErrorContext, InternalErrorMessage};
 
 use crate::{
     auth,
@@ -15,7 +15,7 @@ use crate::{
 
 fn gen_client_secret() -> Result<String, InternalError> {
     let mut buf = [0u8; 16];
-    getrandom::fill(&mut buf).context(InternalErrorMessage!("Could not generate client secret"))?;
+    getrandom::fill(&mut buf).context(InternalErrorContext!("Could not generate client secret"))?;
     Ok(hex::encode(buf))
 }
 
@@ -69,7 +69,7 @@ pub(crate) async fn create(
     )
     .execute(&*pg)
     .await
-    .context(InternalErrorMessage!(ctx(display), strings::ERROR_DB))?;
+    .context(InternalErrorContext!(display strings::ERROR_DB))?;
 
     if result.rows_affected() == 0 {
         return Err(SlugInUse.into());
@@ -89,7 +89,7 @@ pub(crate) async fn create(
         )
         .execute(&*pg)
         .await
-        .context(InternalErrorMessage!(ctx(display), strings::ERROR_DB))?;
+        .context(InternalErrorContext!(display strings::ERROR_DB))?;
 
         res.client_secret = Some(client_secret);
     }
@@ -118,7 +118,7 @@ pub(crate) async fn list(
     )
     .fetch_all(&*pg)
     .await
-    .context(InternalErrorMessage!(ctx(display), strings::ERROR_DB))?;
+    .context(InternalErrorContext!(display strings::ERROR_DB))?;
 
     Ok(apps
         .into_iter()
@@ -163,7 +163,7 @@ pub(crate) async fn update(
     )
     .fetch_optional(&*pg)
     .await
-    .context(InternalErrorMessage!(ctx(display), strings::ERROR_DB))?
+    .context(InternalErrorContext!(display strings::ERROR_DB))?
     .map(|res| res.redirect_uris);
 
     let mut res_client_secret = None;
@@ -202,7 +202,7 @@ pub(crate) async fn update(
             )
             .execute(&*pg)
             .await
-            .context(InternalErrorMessage!(ctx(display), strings::ERROR_DB))?;
+            .context(InternalErrorContext!(display strings::ERROR_DB))?;
 
             res_client_secret = Some(client_secret);
         }
@@ -262,7 +262,7 @@ pub(crate) async fn update(
             )
             .execute(&*pg)
             .await
-            .context(InternalErrorMessage!(ctx(display), strings::ERROR_DB))?;
+            .context(InternalErrorContext!(display strings::ERROR_DB))?;
 
             res_client_secret = Some(client_secret);
             res_redirect_uris = Some(uris);
@@ -330,7 +330,7 @@ pub(crate) async fn delete(
     )
     .execute(&*pg)
     .await
-    .context(InternalErrorMessage!(ctx(display), strings::ERROR_DB))?;
+    .context(InternalErrorContext!(display strings::ERROR_DB))?;
 
     if res.rows_affected() == 0 {
         return Err(NoApplication { slug }.into());

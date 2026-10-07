@@ -7,11 +7,12 @@ use idp_proto::{
 };
 use sha2::Sha256;
 use snafu::{Location, prelude::*};
+use transit_core::TransitErrorContext;
 
 use crate::strings::ENV_SECRET;
 
 #[derive(Snafu, Debug)]
-pub enum TokenError {
+pub(crate) enum TokenError {
     #[snafu(display("{ENV_SECRET} not set"))]
     Env {
         source: env::VarError,
@@ -38,7 +39,7 @@ fn token_secret() -> Result<Vec<u8>, TokenError> {
     hex::decode(env::var(ENV_SECRET).context(EnvSnafu)?).context(InvalidHexSnafu)
 }
 
-pub fn sign(raw: TokenRaw) -> Result<Token, TokenError> {
+pub(crate) fn sign(raw: TokenRaw) -> Result<Token, TokenError> {
     let mut mac = Hmac::<Sha256>::new_from_slice(&token_secret()?).context(InvalidHmacSnafu)?;
     mac.update(&bitcode::encode(&raw));
 
@@ -50,13 +51,16 @@ pub fn sign(raw: TokenRaw) -> Result<Token, TokenError> {
     })
 }
 
-pub fn verify(token: &Token) -> Result<Result<&TokenRaw, Denied>, TokenError> {
+pub(crate) fn verify(token: &Token) -> Result<Result<&TokenRaw, Denied>, TokenError> {
     let mut mac = Hmac::<Sha256>::new_from_slice(&token_secret()?).context(InvalidHmacSnafu)?;
     mac.update(&bitcode::encode(&token.raw));
-    let verify = mac.verify_slice(&token.sig);
 
-    if verify.is_err() {
-        return Ok(Err(Denied));
+    let verify = mac
+        .verify_slice(&token.sig)
+        .context(TransitErrorContext!(display Denied));
+
+    if let Err(e) = verify {
+        return Ok(Err(e));
     }
 
     Ok(Ok(&token.raw))

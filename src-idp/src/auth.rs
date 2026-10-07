@@ -1,14 +1,23 @@
+use std::{sync::Arc, time::Duration};
+
+use argon2::{Argon2, PasswordVerifier};
 use idp_proto::{
-    auth::{AccessLevel, Authentication},
+    auth::{
+        AccessLevel, AuthenticateError, AuthenticateRequest, Authentication, BadPassword, Token,
+        TokenRaw,
+    },
     error::Denied,
+    user::NoUser,
 };
-use snafu::ResultExt;
-use sqlx::PgPool;
-use transit_core::{InternalError, InternalErrorMessage};
+use snafu::{OptionExt, ResultExt};
+use sqlx::{PgPool, types::chrono};
+use transit_core::{
+    InternalError, InternalErrorContext, InternalErrorMessage, TransitErrorContext,
+};
 
-use crate::{strings, token};
+use crate::{strings, token, user};
 
-pub async fn authenticate(
+pub(crate) async fn authenticate(
     auth: Authentication,
     level: AccessLevel,
     pg: &PgPool,
@@ -37,7 +46,7 @@ pub async fn authenticate(
             }
 
             Ok(token::verify(&token)
-                .context(InternalErrorMessage!("Failed to verify token"))?
+                .context(InternalErrorContext!("Failed to verify token"))?
                 .map(|_| ()))
         }
         Authentication::Integration(int) => {
@@ -60,4 +69,31 @@ pub async fn authenticate(
             Ok(Ok(()))
         }
     }
+}
+
+pub(crate) async fn route(
+    AuthenticateRequest { query, password }: AuthenticateRequest,
+    pg: Arc<PgPool>,
+) -> Result<Token, AuthenticateError> {
+    let user = user::query(&query, &pg).await?.context(NoUser)?;
+    let hash = user.password_hash;
+
+    let argon2 = Argon2::new(
+        argon2::Algorithm::Argon2id,
+        argon2::Version::V0x13,
+        argon2::Params::DEFAULT,
+    );
+
+    argon2
+        .verify_password(password.as_bytes(), hash.as_str())
+        .context(TransitErrorContext!(BadPassword))?;
+
+    let raw = TokenRaw {
+        uid: user.id,
+        username: user.username,
+        email: user.email,
+        exp: (chrono::Utc::now() + Duration::from_days(7)).timestamp_millis() as u64,
+    };
+
+    Ok(token::sign(raw).context(InternalErrorContext!("Failed to sign token"))?)
 }
