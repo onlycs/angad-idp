@@ -9,7 +9,7 @@ use sha2::Sha256;
 use snafu::{Location, prelude::*};
 use transit_core::TransitErrorContext;
 
-use crate::strings::ENV_SECRET;
+use crate::common::ENV_SECRET;
 
 #[derive(Snafu, Debug)]
 pub(crate) enum TokenError {

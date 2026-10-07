@@ -10,14 +10,8 @@ use transit_core::{InternalError, InternalErrorContext};
 
 use crate::{
     auth,
-    strings::{self, NAME_RE, SLUG_RE, URI_RE, URL_RE},
+    common::{self, NAME_RE, SLUG_RE, URI_RE, URL_RE},
 };
-
-fn gen_client_secret() -> Result<String, InternalError> {
-    let mut buf = [0u8; 16];
-    getrandom::fill(&mut buf).context(InternalErrorContext!("Could not generate client secret"))?;
-    Ok(hex::encode(buf))
-}
 
 #[tracing::instrument(skip(pg))]
 pub(crate) async fn create(
@@ -30,27 +24,15 @@ pub(crate) async fn create(
 
     auth::authenticate(auth, AccessLevel::ReadWrite, &pg).await??;
 
-    let slug_valid = SLUG_RE.is_match(&app.slug);
-    let name_valid = NAME_RE.is_match(&app.name);
-    let url_valid = URL_RE.is_match(&app.url);
-    let invalid_redirect_uri = app
+    snafu::ensure!(SLUG_RE.is_match(&app.slug), InvalidSlug);
+    snafu::ensure!(NAME_RE.is_match(&app.name), InvalidAppName);
+    snafu::ensure!(URL_RE.is_match(&app.url), InvalidUrl);
+
+    if let Some(uri) = app
         .oidc
         .as_ref()
-        .and_then(|oidc| oidc.redirect_uris.iter().find(|uri| !URI_RE.is_match(uri)));
-
-    if !slug_valid {
-        return Err(InvalidSlug.into());
-    }
-
-    if !name_valid {
-        return Err(InvalidAppName.into());
-    }
-
-    if !url_valid {
-        return Err(InvalidUrl.into());
-    }
-
-    if let Some(uri) = invalid_redirect_uri {
+        .and_then(|oidc| oidc.redirect_uris.iter().find(|uri| !URI_RE.is_match(uri)))
+    {
         return Err(InvalidRedirectUri {
             uri: uri.to_string(),
         }
@@ -69,14 +51,14 @@ pub(crate) async fn create(
     )
     .execute(&*pg)
     .await
-    .context(InternalErrorContext!(via(display), strings::ERROR_DB))?;
+    .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
     if result.rows_affected() == 0 {
         return Err(SlugInUse.into());
     }
 
     if let Some(oidc) = app.oidc {
-        let client_secret = gen_client_secret()?;
+        let client_secret = hex::encode(common::generate_secret()?);
 
         sqlx::query!(
             r#"
@@ -89,7 +71,7 @@ pub(crate) async fn create(
         )
         .execute(&*pg)
         .await
-        .context(InternalErrorContext!(via(display), strings::ERROR_DB))?;
+        .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
         res.client_secret = Some(client_secret);
     }
@@ -118,7 +100,7 @@ pub(crate) async fn list(
     )
     .fetch_all(&*pg)
     .await
-    .context(InternalErrorContext!(via(display), strings::ERROR_DB))?;
+    .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
     Ok(apps
         .into_iter()
@@ -163,7 +145,7 @@ pub(crate) async fn update(
     )
     .fetch_optional(&*pg)
     .await
-    .context(InternalErrorContext!(via(display), strings::ERROR_DB))?
+    .context(InternalErrorContext!(via(display), common::ERROR_DB))?
     .map(|res| res.redirect_uris);
 
     let mut res_client_secret = None;
@@ -189,7 +171,7 @@ pub(crate) async fn update(
             client_secret: true,
             current_uris: Some(_),
         } => {
-            let client_secret = gen_client_secret()?;
+            let client_secret = hex::encode(common::generate_secret()?);
 
             sqlx::query!(
                 r#"
@@ -202,7 +184,7 @@ pub(crate) async fn update(
             )
             .execute(&*pg)
             .await
-            .context(InternalErrorContext!(via(display), strings::ERROR_DB))?;
+            .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
             res_client_secret = Some(client_secret);
         }
@@ -215,7 +197,7 @@ pub(crate) async fn update(
             client_secret: roll,
         } => {
             if roll {
-                res_client_secret = Some(gen_client_secret()?);
+                res_client_secret = Some(hex::encode(common::generate_secret()?));
             }
 
             match sqlx::query!(
@@ -235,7 +217,7 @@ pub(crate) async fn update(
                     return Err(NoApplication { slug }.into());
                 }
                 Err(other) => {
-                    return Err(InternalError!(ctx(display other), strings::ERROR_DB).into());
+                    return Err(InternalError!(ctx(display other), common::ERROR_DB).into());
                 }
             }
 
@@ -249,7 +231,7 @@ pub(crate) async fn update(
             update_uris: Some(uris),
             client_secret: false,
         } => {
-            let client_secret = gen_client_secret()?;
+            let client_secret = hex::encode(common::generate_secret()?);
 
             sqlx::query!(
                 r#"
@@ -262,7 +244,7 @@ pub(crate) async fn update(
             )
             .execute(&*pg)
             .await
-            .context(InternalErrorContext!(via(display), strings::ERROR_DB))?;
+            .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
             res_client_secret = Some(client_secret);
             res_redirect_uris = Some(uris);
@@ -297,7 +279,7 @@ pub(crate) async fn update(
             return Err(NoApplication { slug }.into());
         }
         Err(other) => {
-            return Err(InternalError!(ctx(display other), strings::ERROR_DB).into());
+            return Err(InternalError!(ctx(display other), common::ERROR_DB).into());
         }
     };
 
@@ -330,7 +312,7 @@ pub(crate) async fn delete(
     )
     .execute(&*pg)
     .await
-    .context(InternalErrorContext!(via(display), strings::ERROR_DB))?;
+    .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
     if res.rows_affected() == 0 {
         return Err(NoApplication { slug }.into());

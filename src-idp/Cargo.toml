@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 argon2 = "0.6.0"
 bitcode = "0.6.9"
+cuid2 = "0.1.6"
 dotenvy = "0.15.7"
 getrandom = "0.4.3"
 hex = "0.4.3"

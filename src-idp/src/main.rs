@@ -5,6 +5,7 @@ use std::env;
 use idp_proto::{
     app::{ApplicationCreate, ApplicationDelete, ApplicationList, ApplicationUpdate},
     auth::Authenticate,
+    integration::{IntegrationCreate, IntegrationDelete, IntegrationList, IntegrationUpdate},
 };
 use snafu::ResultExt;
 use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::SubscriberInitExt};
@@ -15,7 +16,8 @@ use transit_core::{
 
 mod app;
 mod auth;
-mod strings;
+mod common;
+mod integration;
 mod token;
 mod user;
 
@@ -39,18 +41,25 @@ async fn main() -> Result<(), InternalError> {
     init_logger();
     dotenvy::dotenv().ok();
 
-    let pool = sqlx::PgPool::connect(&env::var(strings::ENV_DATABSE_URL).context(InternalSnafu)?)
+    let pool = sqlx::PgPool::connect(&env::var(common::ENV_DATABSE_URL).context(InternalSnafu)?)
         .await
         .context(InternalSnafu)?;
 
     sqlx::migrate!().run(&pool).await.context(InternalSnafu)?;
 
     let router = Router::new(pool)
+        // Application CRUD
         .route::<ApplicationCreate, _>(app::create)
         .route::<ApplicationList, _>(app::list)
         .route::<ApplicationUpdate, _>(app::update)
         .route::<ApplicationDelete, _>(app::delete)
+        // Authentication
         .route::<Authenticate, _>(auth::route)
+        // Integration CRUD
+        .route::<IntegrationCreate, _>(integration::create)
+        .route::<IntegrationList, _>(integration::list)
+        .route::<IntegrationUpdate, _>(integration::update)
+        .route::<IntegrationDelete, _>(integration::delete)
         .build();
 
     server::listen_tcp_tls(

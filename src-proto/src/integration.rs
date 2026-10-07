@@ -31,6 +31,14 @@ pub struct IntegrationUpdateRequest {
     pub id: String,
     pub name: Option<String>,
     pub access: Option<AccessLevel>,
+    pub roll_key: bool,
+}
+
+#[record]
+pub struct IntegrationUpdateResponse {
+    pub integration: Integration,
+    /// Some if and only if `roll_key` is `true`.
+    pub key: Option<String>,
 }
 
 #[record]
@@ -54,6 +62,6 @@ error! {
 route! {
     IntegrationCreate(IntegrationCreateRequest) -> Result<IntegrationCreateResponse, IntegrationCreateError>;
     IntegrationList(Authentication) -> Result<Vec<Integration>, IntegrationListError>;
-    IntegrationUpdate(IntegrationUpdateRequest) -> Result<Integration, IntegrationUpdateError>;
+    IntegrationUpdate(IntegrationUpdateRequest) -> Result<IntegrationUpdateResponse, IntegrationUpdateError>;
     IntegrationDelete(IntegrationDeleteRequest) -> Result<(), IntegrationDeleteError>;
 }

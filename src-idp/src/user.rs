@@ -6,7 +6,7 @@ use sqlx::{
 };
 use transit_core::{InternalError, InternalErrorContext};
 
-use crate::strings;
+use crate::common;
 
 #[derive(Clone, Debug, sqlx::FromRow)]
 pub(crate) struct UserDb {
@@ -31,7 +31,7 @@ pub(crate) async fn query(uq: &UserQuery, pg: &PgPool) -> Result<Option<UserDb>,
         .build_query_as::<UserDb>()
         .fetch_optional(pg)
         .await
-        .context(InternalErrorContext!(via(display), strings::ERROR_DB))?;
+        .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
     Ok(result)
 }
