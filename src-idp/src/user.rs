@@ -31,7 +31,7 @@ pub(crate) async fn query(uq: &UserQuery, pg: &PgPool) -> Result<Option<UserDb>,
         .build_query_as::<UserDb>()
         .fetch_optional(pg)
         .await
-        .context(InternalErrorContext!(display strings::ERROR_DB))?;
+        .context(InternalErrorContext!(via(display), strings::ERROR_DB))?;
 
     Ok(result)
 }

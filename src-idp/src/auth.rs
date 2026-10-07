@@ -11,9 +11,7 @@ use idp_proto::{
 };
 use snafu::{OptionExt, ResultExt};
 use sqlx::{PgPool, types::chrono};
-use transit_core::{
-    InternalError, InternalErrorContext, InternalErrorMessage, TransitErrorContext,
-};
+use transit_core::{InternalError, InternalErrorContext, TransitErrorContext};
 
 use crate::{strings, token, user};
 
@@ -34,7 +32,7 @@ pub(crate) async fn authenticate(
                 Ok(updated) => updated,
                 Err(sqlx::Error::RowNotFound) => return Ok(Err(Denied)),
                 Err(other) => {
-                    return Err(InternalErrorMessage!(ctx(display other), strings::ERROR_DB));
+                    return Err(InternalError!(ctx(display other), strings::ERROR_DB));
                 }
             };
 
@@ -58,7 +56,7 @@ pub(crate) async fn authenticate(
                 Ok(auth) => auth,
                 Err(sqlx::Error::RowNotFound) => return Ok(Err(Denied)),
                 Err(other) => {
-                    return Err(InternalErrorMessage!(ctx(display other), strings::ERROR_DB));
+                    return Err(InternalError!(ctx(display other), strings::ERROR_DB));
                 }
             };
 

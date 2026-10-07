@@ -57,7 +57,7 @@ pub(crate) fn verify(token: &Token) -> Result<Result<&TokenRaw, Denied>, TokenEr
 
     let verify = mac
         .verify_slice(&token.sig)
-        .context(TransitErrorContext!(display Denied));
+        .context(TransitErrorContext!(via(display), Denied));
 
     if let Err(e) = verify {
         return Ok(Err(e));

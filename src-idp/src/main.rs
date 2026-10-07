@@ -43,6 +43,8 @@ async fn main() -> Result<(), InternalError> {
         .await
         .context(InternalSnafu)?;
 
+    sqlx::migrate!().run(&pool).await.context(InternalSnafu)?;
+
     let router = Router::new(pool)
         .route::<ApplicationCreate, _>(app::create)
         .route::<ApplicationList, _>(app::list)

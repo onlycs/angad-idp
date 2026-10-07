@@ -2238,7 +2238,7 @@ dependencies = [
 [[package]]
 name = "transit-core"
 version = "0.1.0"
-source = "git+https://codeberg.org/tendulkar/transit#3a6e5a56642871434d855846af23d158543a8fd7"
+source = "git+https://codeberg.org/tendulkar/transit#3860d479a45fc0f59b6f6619d6f370ea8a86149a"
 dependencies = [
  "bitcode",
  "futures-util",
@@ -2269,7 +2269,7 @@ dependencies = [
 [[package]]
 name = "transit-macros"
 version = "0.1.0"
-source = "git+https://codeberg.org/tendulkar/transit#3a6e5a56642871434d855846af23d158543a8fd7"
+source = "git+https://codeberg.org/tendulkar/transit#3860d479a45fc0f59b6f6619d6f370ea8a86149a"
 dependencies = [
  "heck",
  "itertools",
