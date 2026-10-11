@@ -1,19 +1,39 @@
-use std::{sync::Arc, time::Duration};
-
-use argon2::{Argon2, PasswordVerifier};
 use idp_proto::{
-    auth::{
-        AccessLevel, AuthenticateError, AuthenticateRequest, Authentication, BadPassword, Token,
-        TokenRaw,
-    },
+    app::Membership,
+    auth::{AccessLevel, Authentication, AuthenticationStrict},
     error::Denied,
-    user::NoUser,
 };
-use snafu::{OptionExt, ResultExt};
-use sqlx::{PgPool, types::chrono};
-use transit_core::{InternalError, InternalErrorContext, TransitErrorContext};
+use sqlx::PgPool;
+use transit_core::InternalError;
 
 use crate::{common, token, user};
+
+async fn authenticate_integration(
+    key: String,
+    level: AccessLevel,
+    pg: &PgPool,
+) -> Result<Result<(), Denied>, InternalError> {
+    let res = sqlx::query!(
+        r#"SELECT read_only FROM integrations WHERE key_hash = $1"#,
+        common::sha256(key.as_bytes())
+    )
+    .fetch_one(pg)
+    .await;
+
+    let auth = match res {
+        Ok(auth) => auth,
+        Err(sqlx::Error::RowNotFound) => return Ok(Err(Denied)),
+        Err(other) => {
+            return Err(InternalError!(ctx(display other), common::ERROR_DB));
+        }
+    };
+
+    if auth.read_only && level == AccessLevel::ReadWrite {
+        return Ok(Err(Denied));
+    }
+
+    Ok(Ok(()))
+}
 
 pub(crate) async fn authenticate(
     auth: Authentication,
@@ -22,76 +42,71 @@ pub(crate) async fn authenticate(
 ) -> Result<Result<(), Denied>, InternalError> {
     match auth {
         Authentication::Token(token) => {
-            let updated = match sqlx::query!(
-                r#"SELECT updated_at FROM users WHERE id = $1"#,
-                token.raw.uid
+            let token = match token::parse(&token)? {
+                Ok(token) => token,
+                Err(denied) => return Ok(Err(denied)),
+            };
+
+            let perms = match sqlx::query!(
+                r#"
+                SELECT updated_at FROM users
+                WHERE id = $1;
+                "#,
+                token.uid,
             )
             .fetch_one(pg)
             .await
             {
-                Ok(updated) => updated,
+                Ok(perms) => perms,
                 Err(sqlx::Error::RowNotFound) => return Ok(Err(Denied)),
                 Err(other) => {
                     return Err(InternalError!(ctx(display other), common::ERROR_DB));
                 }
             };
 
-            let updated = updated.updated_at.timestamp_millis() as u64;
-            let exp = token.raw.exp;
-
-            if updated > exp {
-                return Ok(Err(Denied));
-            }
-
-            Ok(token::verify(&token)
-                .context(InternalErrorContext!("Failed to verify token"))?
-                .map(|_| ()))
-        }
-        Authentication::Integration(int) => {
-            let res = sqlx::query!(r#"SELECT read_only FROM integrations WHERE name = $1"#, int)
-                .fetch_one(pg)
-                .await;
-
-            let auth = match res {
-                Ok(auth) => auth,
-                Err(sqlx::Error::RowNotFound) => return Ok(Err(Denied)),
-                Err(other) => {
-                    return Err(InternalError!(ctx(display other), common::ERROR_DB));
-                }
-            };
-
-            if auth.read_only && level == AccessLevel::ReadWrite {
+            if perms.updated_at > token.issued
+                || token.memberships.iter().any(Membership::is_domain_admin)
+            {
                 return Ok(Err(Denied));
             }
 
             Ok(Ok(()))
         }
+        Authentication::Integration(key) => authenticate_integration(key, level, pg).await,
     }
 }
 
-pub(crate) async fn route(
-    AuthenticateRequest { query, password }: AuthenticateRequest,
-    pg: Arc<PgPool>,
-) -> Result<Token, AuthenticateError> {
-    let user = user::query(&query, &pg).await?.context(NoUser)?;
-    let hash = user.password_hash;
+pub(crate) async fn authenticate_strict(
+    auth: AuthenticationStrict,
+    level: AccessLevel,
+    pg: &PgPool,
+) -> Result<Result<(), Denied>, InternalError> {
+    match auth {
+        AuthenticationStrict::Password { uid, password } => {
+            let hashed = match sqlx::query!(
+                r#"
+                SELECT password_hash
+                FROM users
+                WHERE id = $1
+                "#,
+                uid,
+            )
+            .fetch_one(pg)
+            .await
+            {
+                Ok(hashed) => hashed,
+                Err(sqlx::Error::RowNotFound) => return Ok(Err(Denied)),
+                Err(other) => {
+                    return Err(InternalError!(ctx(display other), common::ERROR_DB));
+                }
+            };
 
-    let argon2 = Argon2::new(
-        argon2::Algorithm::Argon2id,
-        argon2::Version::V0x13,
-        argon2::Params::DEFAULT,
-    );
+            if let Err(_incorrect) = user::verify_password(&hashed.password_hash, &password) {
+                return Ok(Err(Denied));
+            }
 
-    argon2
-        .verify_password(password.as_bytes(), hash.as_str())
-        .context(TransitErrorContext!(BadPassword))?;
-
-    let raw = TokenRaw {
-        uid: user.id,
-        username: user.username,
-        email: user.email,
-        exp: (chrono::Utc::now() + Duration::from_days(7)).timestamp_millis() as u64,
-    };
-
-    Ok(token::sign(raw).context(InternalErrorContext!("Failed to sign token"))?)
+            Ok(Ok(()))
+        }
+        AuthenticationStrict::Integration(key) => authenticate_integration(key, level, pg).await,
+    }
 }

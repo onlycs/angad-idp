@@ -4,6 +4,7 @@ use idp_proto::{
     app::*,
     auth::{AccessLevel, Authentication},
 };
+use itertools::Itertools;
 use snafu::prelude::*;
 use sqlx::PgPool;
 use transit_core::{InternalError, InternalErrorContext};
@@ -12,6 +13,42 @@ use crate::{
     auth,
     common::{self, NAME_RE, SLUG_RE, URI_RE, URL_RE},
 };
+
+pub(crate) async fn verify(
+    slugs: &[String],
+    pg: &PgPool,
+) -> Result<Result<(), NoApplication>, InternalError> {
+    sqlx::query_scalar!(
+        r#"
+        SELECT requested.slug
+        FROM UNNEST($1::text[]) AS requested(slug)
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM applications a
+            WHERE a.slug = requested.slug
+        )
+        LIMIT 1
+        "#,
+        &slugs,
+    )
+    .fetch_optional(pg)
+    .await
+    .context(InternalErrorContext!(via(display), common::ERROR_DB))
+    .map(|it| match it {
+        Some(Some(missing)) => Err(NoApplication { slug: missing }),
+        _ => Ok(()),
+    })
+}
+
+#[allow(clippy::ptr_arg)]
+pub(crate) fn split_roles(memberships: &Vec<Membership>) -> (Vec<String>, Vec<bool>) {
+    memberships
+        .iter()
+        .sorted_by(|a, b| a.slug.cmp(&b.slug).then(b.admin.cmp(&a.admin)))
+        .dedup_by(|a, b| a.slug == b.slug)
+        .map(|Membership { slug, admin }| (slug.clone(), admin))
+        .unzip::<_, _, Vec<_>, Vec<_>>()
+}
 
 #[tracing::instrument(skip(pg))]
 pub(crate) async fn create(
@@ -39,6 +76,11 @@ pub(crate) async fn create(
         .into());
     }
 
+    let mut tx = pg
+        .begin()
+        .await
+        .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
+
     let result = sqlx::query!(
         r#"
         INSERT INTO applications (slug, name, url)
@@ -49,7 +91,7 @@ pub(crate) async fn create(
         app.name,
         app.url,
     )
-    .execute(&*pg)
+    .execute(&mut *tx)
     .await
     .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
@@ -69,12 +111,16 @@ pub(crate) async fn create(
             client_secret,
             oidc.redirect_uris.as_slice(),
         )
-        .execute(&*pg)
+        .execute(&mut *tx)
         .await
         .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
         res.client_secret = Some(client_secret);
     }
+
+    tx.commit()
+        .await
+        .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
     Ok(res)
 }
@@ -135,6 +181,11 @@ pub(crate) async fn update(
         client_secret: bool,
     }
 
+    let mut tx = pg
+        .begin()
+        .await
+        .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
+
     let mut res_redirect_uris = sqlx::query!(
         r#"
         SELECT redirect_uris
@@ -143,7 +194,7 @@ pub(crate) async fn update(
         "#,
         slug,
     )
-    .fetch_optional(&*pg)
+    .fetch_optional(&mut *tx)
     .await
     .context(InternalErrorContext!(via(display), common::ERROR_DB))?
     .map(|res| res.redirect_uris);
@@ -182,7 +233,7 @@ pub(crate) async fn update(
                 client_secret,
                 slug,
             )
-            .execute(&*pg)
+            .execute(&mut *tx)
             .await
             .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
@@ -209,7 +260,7 @@ pub(crate) async fn update(
                 uris.as_slice(),
                 slug,
             )
-            .execute(&*pg)
+            .execute(&mut *tx)
             .await
             {
                 Ok(_) => {}
@@ -242,7 +293,7 @@ pub(crate) async fn update(
                 uris.as_slice(),
                 client_secret,
             )
-            .execute(&*pg)
+            .execute(&mut *tx)
             .await
             .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
@@ -271,7 +322,7 @@ pub(crate) async fn update(
         name,
         url,
     )
-    .fetch_one(&*pg)
+    .fetch_one(&mut *tx)
     .await
     {
         Ok(res) => res,
@@ -282,6 +333,10 @@ pub(crate) async fn update(
             return Err(InternalError!(ctx(display other), common::ERROR_DB).into());
         }
     };
+
+    tx.commit()
+        .await
+        .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
     Ok(ApplicationUpdateResponse {
         app: Application {

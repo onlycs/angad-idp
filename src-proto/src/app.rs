@@ -2,10 +2,20 @@ use transit_core::{error, record, route};
 
 use crate::{auth::Authentication, error::Denied};
 
+pub const DOMAIN_SLUG: &str = "angad-idp";
+
 #[record]
+#[cfg_attr(not(target_family = "wasm"), derive(serde::Deserialize))]
+#[derive(PartialEq, Eq)]
 pub struct Membership {
     pub slug: String,
     pub admin: bool,
+}
+
+impl Membership {
+    pub fn is_domain_admin(&self) -> bool {
+        self.slug == DOMAIN_SLUG && self.admin
+    }
 }
 
 #[record]

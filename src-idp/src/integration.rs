@@ -4,7 +4,6 @@ use idp_proto::{
     auth::{AccessLevel, Authentication},
     integration::*,
 };
-use sha2::Digest;
 use snafu::prelude::*;
 use sqlx::PgPool;
 use transit_core::{InternalError, InternalErrorContext};
@@ -24,10 +23,7 @@ pub(crate) async fn create(
 
     let id = cuid2::cuid();
     let key = hex::encode(common::generate_secret()?);
-    let hash = sha2::Sha256::new() // random bytes so no kdf
-        .chain_update(key.as_bytes())
-        .finalize()
-        .to_vec();
+    let hash = common::sha256(key.as_bytes());
 
     let result = sqlx::query!(
         r#"
@@ -103,12 +99,7 @@ pub(crate) async fn update(
         None
     };
 
-    let key_hash = key.as_ref().map(|k| {
-        sha2::Sha256::new()
-            .chain_update(k.as_bytes())
-            .finalize()
-            .to_vec()
-    });
+    let key_hash = key.as_ref().map(|k| common::sha256(k.as_bytes()));
 
     let integration_update = match sqlx::query!(
         r#"

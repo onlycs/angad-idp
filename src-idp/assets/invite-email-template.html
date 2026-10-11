@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <meta name="supported-color-schemes" content="light dark">
+    <title>Your Angad Auth invitation</title>
+    <style>
+      :root { color-scheme: light dark; supported-color-schemes: light dark; }
+      body { margin: 0 !important; padding: 0 !important; }
+      table { border-spacing: 0; }
+      img { border: 0; outline: none; text-decoration: none; }
+      a[x-apple-data-detectors] { color: inherit !important; text-decoration: none !important; }
+      .invite-button:hover { background-color: #0353e9 !important; }
+      .invite-button:focus-visible { outline: 2px solid #0f62fe; outline-offset: 2px; box-shadow: inset 0 0 0 1px #ffffff; }
+      @media screen and (max-width: 480px) {
+        .email-outer { padding: 24px 16px !important; }
+        .email-content { padding: 24px 24px 40px !important; }
+        .email-brand { padding-bottom: 32px !important; }
+        .email-title { font-size: 28px !important; line-height: 36px !important; }
+        .invite-button { padding-left: 24px !important; padding-right: 24px !important; }
+        .email-footer { padding-left: 24px !important; padding-right: 24px !important; }
+      }
+      @media (prefers-color-scheme: dark) {
+        .email-background { background-color: #161616 !important; }
+        .email-card { background-color: #262626 !important; }
+        .email-primary { color: #f4f4f4 !important; }
+        .email-secondary { color: #c6c6c6 !important; }
+        .email-link { color: #78a9ff !important; }
+        .invite-button:focus-visible { outline-color: #ffffff; }
+      }
+    </style>
+  </head>
+  <body class="email-background" style="margin: 0; padding: 0; width: 100%; background-color: #f4f4f4; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%;">
+    <div style="display: none; max-height: 0; overflow: hidden; opacity: 0; mso-hide: all; font-size: 1px; line-height: 1px;">Accept your Angad Auth invitation to access angad.page services.</div>
+    <table role="presentation" class="email-background" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f4f4f4" style="width: 100%; background-color: #f4f4f4;">
+      <tr>
+        <td class="email-outer" align="center" style="padding: 64px 16px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width: 100%; max-width: 448px; font-family: 'IBM Plex Sans', Arial, sans-serif;">
+            <tr>
+              <td class="email-card email-content" bgcolor="#ffffff" style="background-color: #ffffff; padding: 32px 32px 48px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="font-family: 'IBM Plex Sans', Arial, sans-serif;">
+                  <tr>
+                    <td class="email-brand" width="32" valign="middle" style="width: 32px; padding-bottom: 40px;">
+                      <img src="https://auth.angad.page/assets/v1/366869816461492979/policy/label/icon-dark-366987510795993607" width="32" height="32" alt="" style="display: block; width: 32px; height: 32px; border: 0;">
+                    </td>
+                    <td class="email-brand email-primary" valign="middle" style="padding-left: 10px; padding-bottom: 40px; color: #161616; font-size: 16px; line-height: 24px; font-weight: 500;">Angad Auth</td>
+                  </tr>
+                </table>
+                <h1 class="email-title email-primary" style="margin: 0 0 8px; color: #161616; font-size: 32px; line-height: 40px; font-weight: 400; letter-spacing: 0;">You're Invited</h1>
+                <p class="email-secondary" style="margin: 0; color: #525252; font-size: 16px; line-height: 24px;">You’ve been invited to Angad Auth. Please click the button below to start the onboarding process.</p>
+              </td>
+            </tr>
+            <tr>
+              <td bgcolor="#0f62fe" style="background-color: #0f62fe; mso-padding-alt: 20px 32px;">
+                <a class="invite-button" href="{{invite_url}}" style="display: block; padding: 20px 32px; background-color: #0f62fe; color: #ffffff; font-size: 16px; line-height: 24px; font-weight: 400; text-align: left; text-decoration: none; mso-padding-alt: 0;">
+                  Accept invitation<span aria-hidden="true" style="float: right; color: #ffffff;">&nbsp;→</span>
+                </a>
+              </td>
+            </tr>
+          </table>
+          <!--[if mso]></td></tr></table><![endif]-->
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

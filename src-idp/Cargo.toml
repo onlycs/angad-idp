@@ -6,13 +6,17 @@ edition = "2024"
 [dependencies]
 argon2 = "0.6.0"
 bitcode = "0.6.9"
+chrono = "0.4.45"
 cuid2 = "0.1.6"
 dotenvy = "0.15.7"
 getrandom = "0.4.3"
 hex = "0.4.3"
 hmac = "0.13.0"
 idp-proto = { version = "0.1.0", path = "../src-proto", features = ["server", "tokio"] }
+itertools = "0.15.0"
+lettre = { version = "0.11.23", features = ["tokio1", "tokio1-native-tls"] }
 regex = "1.13.1"
+serde = { version = "1.0.229", features = ["derive"] }
 sha2 = "0.11.0"
 snafu = { version = "0.9.2", features = ["unstable-provider-api"] }
 sqlx = { path = "../thirdparty/sqlx", features = ["chrono", "postgres", "runtime-tokio"] }
@@ -20,3 +24,4 @@ tokio = { version = "1.53.2", features = ["macros", "rt-multi-thread"] }
 tracing = "0.1.44"
 tracing-subscriber = "0.3.23"
 transit-core = { git = "https://codeberg.org/tendulkar/transit", version = "0.1.0", features = ["nightly", "server", "tokio"] }
+zxcvbn = "3.1.1"

@@ -9,44 +9,32 @@ use crate::{
 
 #[record]
 pub struct User {
-    pub uid: String,
+    pub id: String,
     pub username: String,
     pub email: String,
     pub memberships: Vec<Membership>,
 }
 
-#[oneof]
-pub enum UserQuery {
-    Uid(String),
-    Username(String),
-    Email(String),
-}
-
 #[record]
-pub struct UserSearchRequest {
-    pub auth: Authentication,
-    pub query: UserQuery,
+pub struct CheckPasswordRequest {
+    /// Username, Email, or ID
+    pub unknown_identity: String,
+    pub password: String,
 }
 
 #[record]
 pub struct UserUpdateRequest {
     pub auth: Authentication,
-    pub query: UserQuery,
+    pub id: String,
     pub username: Option<String>,
     pub email: Option<String>,
     pub memberships: Option<Vec<Membership>>,
 }
 
 #[record]
-pub struct UserUpdateResponse {
-    pub user: User,
-    pub jwt: Option<String>,
-}
-
-#[record]
 pub struct UpdatePasswordRequest {
     pub auth: AuthenticationStrict,
-    pub query: UserQuery,
+    pub id: String,
     pub password: String,
 }
 
@@ -63,7 +51,9 @@ error! {
     InvalidUsername("Invalid username");
     EmailInUse("Email in use");
     UsernameInUse("Username in use");
+    IncorrectPassword("Incorrect password");
 
+    CheckPasswordError = NoUser | IncorrectPassword;
     UserListError = Denied;
     UserSearchError = NoUser | Denied;
     UserUpdateError = NoUser | InvalidUsername | InvalidEmail | UsernameInUse | EmailInUse | NoApplication | Denied;
@@ -72,9 +62,9 @@ error! {
 }
 
 route! {
+    CheckPassword(CheckPasswordRequest) -> Result<(), CheckPasswordError>;
     UserList(Authentication) -> Result<Vec<User>, UserListError>;
-    UserSearch(UserSearchRequest) -> Result<User, UserSearchError>;
-    UserUpdate(UserUpdateRequest) -> Result<UserUpdateResponse, UserUpdateError>;
-    UpdatePassword(UpdatePasswordRequest) -> Result<UserUpdateResponse, UpdatePasswordError>;
+    UserUpdate(UserUpdateRequest) -> Result<User, UserUpdateError>;
+    UpdatePassword(UpdatePasswordRequest) -> Result<(), UpdatePasswordError>;
     UserDelete(UserDeleteRequest) -> Result<(), UserDeleteError>;
 }
