@@ -41,13 +41,11 @@ ldap: proto-native
 
 wasm:
 	@echo "=== Building WASM package"
-	cd src-wasm && rm -rf pkg && wasm-pack build --target web --release --out-name libidp
+	cd src-proto && rm -rf pkg && wasm-pack build --target web --release --out-name libidp --features client,tokio
 	@echo "=== Copying package files"
 	rm -rf static/wasm
 	mkdir -p static
-	cp -r src-wasm/pkg static/wasm
-	@echo "=== Patching workerHelpers.js files"
-	sed -i 's|\.\./\.\./\.\.|../../../libidp.js|g' static/wasm/snippets/*/src/workerHelpers.js
+	cp -r src-proto/pkg static/wasm
 
 thirdparty/sqlx:
 	@echo "=== Preparing/patching SQLx"
