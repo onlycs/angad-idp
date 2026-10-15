@@ -1259,7 +1259,6 @@ dependencies = [
 [[package]]
 name = "transit-core"
 version = "0.1.0"
-source = "git+https://codeberg.org/tendulkar/transit#b6f2bdd310ba130489f134f9675db2938c3cd738"
 dependencies = [
  "bitcode",
  "getrandom 0.4.3",
@@ -1288,7 +1287,6 @@ dependencies = [
 [[package]]
 name = "transit-macros"
 version = "0.1.0"
-source = "git+https://codeberg.org/tendulkar/transit#b6f2bdd310ba130489f134f9675db2938c3cd738"
 dependencies = [
  "heck",
  "itertools",

@@ -33,11 +33,11 @@ ldap: proto-native
 	@echo "=== Generating bindings"
 	cd src-proto && uniffi-bindgen-go target/release/libidp_proto.so -o ../src-ldap/transit -c ../src-ldap/uniffi.toml
 	@echo "=== Building"
-	cd src-ldap && go mod tidy && rm -f idp-ldap
+	cd src-ldap && go mod tidy && rm -rf out
 	cd src-ldap && \
     	CGO_LDFLAGS="$(PWD)/src-proto/target/release/libidp_proto.a -lm -ldl -lpthread" \
     	CGO_ENABLED=1 \
-		go build
+		go build -o out/idp-ldap
 
 wasm:
 	@echo "=== Building WASM package"

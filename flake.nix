@@ -28,7 +28,7 @@
           sqlx-cli
           wasm-pack
 
-          go
+          go_1_27
           gopls
           uniffi-bindgen-go.packages.${system}.default
 

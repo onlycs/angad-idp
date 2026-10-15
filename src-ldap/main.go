@@ -1,35 +1,34 @@
 package main
 
 import (
-	"fmt"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
 
-	"angad.page/transit/idp_proto"
-	"angad.page/transit/transit_core"
+	"angad.page/idp-ldap/routes"
+	"angad.page/transit/transit"
+	ldap "github.com/vjeantet/ldapserver"
 )
 
 func main() {
-	transit_core.BeginLogging(transit_core.LogLevelInfo)
+	transit.BeginLogging(transit.LogLevelInfo)
+	ldap.Logger = log.New(os.Stdout, "[server] ", log.LstdFlags)
 
-	tr, err := transit_core.Connect(transit_core.TransitOptions{
-		Connect: transit_core.ConnectOptions{
-			Addr: "127.0.0.1",
-			Port: 23849,
-			Crt:  nil,
-		},
-	})
+	routes.Setup()
+	server := ldap.NewServer()
+	router := ldap.NewRouteMux()
 
-	if err != nil {
-		fmt.Printf("Idk bro ive never written go before: \n%v", err.Report())
-	}
+	router.Bind(routes.Bind)
+	router.Search(routes.Search)
 
-	_, autherr := idp_proto.RouteAuthenticate(tr, idp_proto.AuthenticateRequest{
-		Query: idp_proto.UserQueryUid{
-			Field0: "id",
-		},
-		Password: "joe",
-	})
+	server.Handle(router)
+	go server.ListenAndServe("127.0.0.1:10389")
 
-	if autherr != nil {
-		fmt.Printf("Authentication failed: %v\n", autherr.Report())
-	}
+	ch := make(chan os.Signal, 8)
+	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
+	<-ch
+	close(ch)
+
+	server.Stop()
 }

@@ -1,7 +1,19 @@
 module angad.page/idp-ldap
 
-require angad.page/transit v0.0.0
+require (
+	angad.page/transit v0.0.0
+	github.com/go-ldap/ldap/v3 v3.4.15
+	github.com/lor00x/goldap v0.0.0-20180618054307-a546dffdd1a3
+	github.com/vjeantet/ldapserver v1.0.1
+)
+
+require (
+	github.com/Azure/go-ntlmssp v0.1.1 // indirect
+	github.com/go-asn1-ber/asn1-ber v1.5.8 // indirect
+	github.com/google/uuid v1.6.0 // indirect
+	golang.org/x/crypto v0.54.0 // indirect
+)
 
 replace angad.page/transit => ./transit
 
-go 1.26.8
+go 1.27.1

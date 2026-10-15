@@ -3,6 +3,26 @@ use transit_core::{error, record, route};
 use crate::{auth::Authentication, error::Denied};
 
 pub const DOMAIN_SLUG: &str = "angad-idp";
+pub const GROUP_SUFFIX_ADMIN: &str = "admin";
+pub const GROUP_SUFFIX_USER: &str = "member";
+
+#[cfg(feature = "uniffi")]
+#[uniffi::export]
+pub fn domain_slug() -> String {
+    DOMAIN_SLUG.to_string()
+}
+
+#[cfg(feature = "uniffi")]
+#[uniffi::export]
+pub fn group_suffix_admin() -> String {
+    GROUP_SUFFIX_ADMIN.to_string()
+}
+
+#[cfg(feature = "uniffi")]
+#[uniffi::export]
+pub fn group_suffix_user() -> String {
+    GROUP_SUFFIX_USER.to_string()
+}
 
 #[record]
 #[cfg_attr(not(target_family = "wasm"), derive(serde::Deserialize))]
