@@ -39,10 +39,7 @@ pub(crate) fn ensure_password_strength(
 pub(crate) fn hash_password(pass: &str) -> Result<String, InternalError> {
     common::argon2()
         .hash_password(pass.as_bytes())
-        .context(InternalErrorContext!(
-            via(display),
-            "Failed to hash password"
-        ))
+        .context(InternalErrorContext!(via(display), common::ERROR_GENERIC))
         .map(|it| it.to_string())
 }
 

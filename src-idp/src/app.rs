@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use argon2::PasswordHasher;
 use idp_proto::{
     app::*,
     auth::{AccessLevel, Authentication},
@@ -101,14 +102,19 @@ pub(crate) async fn create(
 
     if let Some(oidc) = app.oidc {
         let client_secret = hex::encode(common::generate_secret()?);
+        let hash = common::argon2()
+            .hash_password(client_secret.as_bytes())
+            .context(InternalErrorContext!(via(display), common::ERROR_GENERIC))?
+            .to_string();
 
         sqlx::query!(
             r#"
-            INSERT INTO applications_oidc (slug, client_secret, redirect_uris)
-            VALUES ($1, $2, $3)
+            INSERT INTO applications_oidc (slug, client_secret_hash, match_url, redirect_uris)
+            VALUES ($1, $2, $3, $4)
             "#,
             app.slug,
-            client_secret,
+            hash,
+            oidc.match_url,
             oidc.redirect_uris.as_slice(),
         )
         .execute(&mut *tx)
@@ -138,7 +144,9 @@ pub(crate) async fn list(
             a.slug,
             a.name,
             a.url,
-            o.redirect_uris
+            o.redirect_uris,
+            o.match_url,
+            o.client_secret_hash IS NULL AS public
         FROM applications a
         LEFT JOIN applications_oidc o
             ON a.slug = o.slug
@@ -154,9 +162,14 @@ pub(crate) async fn list(
             slug: a.slug,
             name: a.name,
             url: a.url,
-            oidc: a.redirect_uris.map(|uris| ApplicationOidc {
-                redirect_uris: uris,
-            }),
+            oidc: a.redirect_uris.zip(a.public).zip_with(
+                a.match_url,
+                |(uris, public), match_url| ApplicationOidc {
+                    redirect_uris: uris,
+                    public,
+                    match_url,
+                },
+            ),
         })
         .collect())
 }
@@ -168,27 +181,21 @@ pub(crate) async fn update(
         slug,
         name,
         url,
-        redirect_uris,
-        roll_client_secret,
+        oidc,
     }: ApplicationUpdateRequest,
     pg: Arc<PgPool>,
 ) -> Result<ApplicationUpdateResponse, ApplicationUpdateError> {
     auth::authenticate(auth, AccessLevel::ReadWrite, &pg).await??;
-
-    struct UpdateOidc<'a> {
-        current_uris: &'a mut Option<Vec<String>>,
-        update_uris: Option<Vec<String>>,
-        client_secret: bool,
-    }
 
     let mut tx = pg
         .begin()
         .await
         .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
-    let mut res_redirect_uris = sqlx::query!(
+    let mut res_oidc = sqlx::query_as!(
+        ApplicationOidc,
         r#"
-        SELECT redirect_uris
+        SELECT redirect_uris, match_url, client_secret_hash IS NULL as "public!: bool"
         FROM applications_oidc
         WHERE slug = $1
         "#,
@@ -196,117 +203,134 @@ pub(crate) async fn update(
     )
     .fetch_optional(&mut *tx)
     .await
-    .context(InternalErrorContext!(via(display), common::ERROR_DB))?
-    .map(|res| res.redirect_uris);
+    .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
     let mut res_client_secret = None;
 
-    match (UpdateOidc {
-        current_uris: &mut res_redirect_uris,
-        update_uris: redirect_uris,
-        client_secret: roll_client_secret,
-    }) {
-        // they ask to roll, but no oidc exists
-        UpdateOidc {
-            current_uris: None,
-            client_secret: true,
-            update_uris: _,
-        } => {
-            return Err(NoApplicationOidc { slug }.into());
+    match oidc {
+        ApplicationOidcUpdate::Create(_) if res_oidc.is_some() => {
+            return Err(ApplicationOidcExists { slug }.into());
         }
 
-        // they ask to only roll with an existing oidc,
-        // no redirect uris to update
-        UpdateOidc {
-            update_uris: None,
-            client_secret: true,
-            current_uris: Some(_),
-        } => {
-            let client_secret = hex::encode(common::generate_secret()?);
-
-            sqlx::query!(
-                r#"
-                UPDATE applications_oidc
-                SET client_secret = $1
-                WHERE slug = $2
-                "#,
-                client_secret,
-                slug,
-            )
-            .execute(&mut *tx)
-            .await
-            .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
-
-            res_client_secret = Some(client_secret);
-        }
-
-        // they ask to update redirect uris with an existing oidc
-        // we can handle roll request dynamically
-        UpdateOidc {
-            current_uris: Some(_),
-            update_uris: Some(uris),
-            client_secret: roll,
-        } => {
-            if roll {
+        ApplicationOidcUpdate::Create(oidc) => {
+            if !oidc.public {
                 res_client_secret = Some(hex::encode(common::generate_secret()?));
             }
 
-            match sqlx::query!(
-                r#"
-                UPDATE applications_oidc
-                SET redirect_uris = $1
-                WHERE slug = $2
-                "#,
-                uris.as_slice(),
-                slug,
-            )
-            .execute(&mut *tx)
-            .await
-            {
-                Ok(_) => {}
-                Err(sqlx::Error::Database(db)) if db.is_foreign_key_violation() => {
-                    return Err(NoApplication { slug }.into());
-                }
-                Err(other) => {
-                    return Err(InternalError!(ctx(display other), common::ERROR_DB).into());
-                }
-            }
-
-            res_redirect_uris = Some(uris);
-        }
-
-        // they ask to update redirect uris without an existing oidc
-        // roll request handled in first arm (should error)
-        UpdateOidc {
-            current_uris: None,
-            update_uris: Some(uris),
-            client_secret: false,
-        } => {
-            let client_secret = hex::encode(common::generate_secret()?);
+            let hash = res_client_secret
+                .as_ref()
+                .map(|res| {
+                    common::argon2()
+                        .hash_password(res.as_bytes())
+                        .context(InternalErrorContext!(via(display), common::ERROR_GENERIC))
+                        .map(|hash| hash.to_string())
+                })
+                .transpose()?;
 
             sqlx::query!(
                 r#"
-                INSERT INTO applications_oidc (slug, redirect_uris, client_secret)
-                VALUES ($1, $2, $3)
+                INSERT INTO applications_oidc (slug, match_url, client_secret_hash, redirect_uris)
+                VALUES ($1, $2, $3, $4)
                 "#,
                 slug,
-                uris.as_slice(),
-                client_secret,
+                oidc.match_url,
+                hash,
+                oidc.redirect_uris.as_slice()
             )
-            .execute(&mut *tx)
+            .execute(&*pg)
             .await
             .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
-            res_client_secret = Some(client_secret);
-            res_redirect_uris = Some(uris);
+            res_oidc = Some(oidc)
         }
 
-        // they don't ask to update anything
-        UpdateOidc {
-            current_uris: _,
-            update_uris: None,
-            client_secret: _,
-        } => {}
+        ApplicationOidcUpdate::Modify {
+            redirect_uris,
+            match_url,
+            mut public,
+        } => {
+            let Some(res_oidc) = res_oidc.as_mut() else {
+                return Err(NoApplicationOidc { slug }.into());
+            };
+
+            if public == ApplicationPublicUpdate::RollClientSecret && res_oidc.public {
+                return Err(NotPrivate { slug }.into());
+            }
+
+            if let ApplicationPublicUpdate::Set(to) = public
+                && to == res_oidc.public
+            {
+                public = ApplicationPublicUpdate::Keep;
+            }
+
+            if public == ApplicationPublicUpdate::RollClientSecret
+                || public == ApplicationPublicUpdate::Set(false)
+            {
+                res_client_secret = Some(hex::encode(common::generate_secret()?));
+            }
+
+            let hash = res_client_secret
+                .as_ref()
+                .map(|res| {
+                    common::argon2()
+                        .hash_password(res.as_bytes())
+                        .context(InternalErrorContext!(via(display), common::ERROR_GENERIC))
+                        .map(|hash| hash.to_string())
+                })
+                .transpose()?;
+
+            sqlx::query!(
+                r#"
+                UPDATE applications_oidc
+                SET
+                    match_url = COALESCE($2, match_url),
+                    redirect_uris = COALESCE($3, redirect_uris),
+                    client_secret_hash = $4
+                WHERE
+                    slug = $1
+                "#,
+                slug,
+                match_url,
+                redirect_uris.as_ref().map(|x| x.as_slice()),
+                hash
+            )
+            .execute(&*pg)
+            .await
+            .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
+
+            if let ApplicationPublicUpdate::Set(to) = public {
+                res_oidc.public = to;
+            }
+
+            if let Some(it) = redirect_uris {
+                res_oidc.redirect_uris = it;
+            }
+
+            if let Some(it) = match_url {
+                res_oidc.match_url = it;
+            }
+        }
+
+        ApplicationOidcUpdate::Remove if res_oidc.is_none() => {
+            return Err(NoApplicationOidc { slug }.into());
+        }
+
+        ApplicationOidcUpdate::Remove => {
+            sqlx::query!(
+                r#"
+                DELETE FROM applications_oidc
+                WHERE slug = $1
+                "#,
+                slug
+            )
+            .execute(&*pg)
+            .await
+            .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
+
+            res_oidc = None;
+        }
+
+        ApplicationOidcUpdate::Keep => {}
     }
 
     let app_update = match sqlx::query!(
@@ -343,9 +367,7 @@ pub(crate) async fn update(
             slug: slug.clone(),
             name: app_update.name,
             url: app_update.url,
-            oidc: res_redirect_uris.map(|uris| ApplicationOidc {
-                redirect_uris: uris,
-            }),
+            oidc: res_oidc,
         },
         client_secret: res_client_secret,
     })

@@ -1,0 +1,122 @@
+# yaml-language-server: $schema=https://www.authelia.com/schemas/latest/json-schema/configuration.json
+authentication_backend:
+  refresh_interval: 5 minutes
+  password_reset:
+    disable: true
+    custom_url: "{{ FRONTEND_URL }}/forgot"
+  password_change:
+    disable: true
+  ldap:
+    address: "ldap://127.0.0.1"
+    implementation: custom
+    timeout: 5s
+    tls:
+      skip_verify: true # TLS to actual IdP is handled by the outpost
+    pooling:
+      enable: false
+      count: 5
+      retries: 2
+    base_dn: "dc=angad,dc=page"
+    additional_users_dn: "ou=users"
+    additional_groups_dn: "ou=groups"
+    users_filter: "(&(|({username_attribute}={input})({mail_attribute}={input}))(objectClass=person))"
+    groups_filter: "(&(member={dn})(objectClass=groupOfNames))"
+    group_search_mode: filter
+    permit_referrals: false
+    user: "cn=$service,ou=users,dc=angad,dc=page"
+    # todo: password: via env
+    attributes:
+      username: "cn"
+      mail: "mail"
+      group_name: "cn"
+      member_of: "memberOf"
+totp:
+  disable: false
+  issuer: "auth.angad.page"
+  apps:
+    apple_store:
+      disable: false
+      url: "https://apps.apple.com/us/app/google-authenticator/id388497605"
+    google_play:
+      disable: false
+      url: "https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2"
+webauthn:
+  disable: false
+  enable_passkey_login: true
+  display_name: Angad Auth
+regulation:
+  modes:
+    - ip
+    - user
+  max_retries: 5
+  find_time: 2m
+  ban_time: 5m
+password_policy:
+  zxcvbn:
+    enabled: true
+    min_score: 3
+session:
+  # todo: secret: via env
+  cookies:
+    - domain: "{{ AUTHELIA_DOMAIN }}"
+      authelia_url: "https://{{ AUTHELIA_DOMAIN }}"
+  redis:
+    # todo: host, port: via env
+    tls:
+      skip_verify: true # in-cluster, therefore idgaf sue me.
+storage:
+  # todo: encryption_key: via env
+  postgres:
+    # todo: address: via env (use tcp://addr:port instead of postgres://)
+    # todo: database, username, password: via env
+    schema: public
+    tls:
+      skip_verify: true # again, in-cluster
+notifier:
+  disable_startup_check: false
+  smtp:
+    # todo: address: via env (use smtp://addr:port)
+    # todo: username, password: via env
+    # todo: sender: via env (use '"Name" <email>')
+    identifier: "{{ AUTHELIA_DOMAIN }}"
+    subject: "[Angad Auth] {title}"
+telemetry:
+  metrics:
+    enabled: false # todo: long-term: LOKI
+identity_providers:
+  oidc:
+    # todo: hmac_secret: via env
+    # todo: jwks: via env? try to do Ed25519? try to certify via LE/cert-manager?
+    cors:
+      allowed_origins_from_client_redirect_uris: true
+    authorization_policies:
+      # {% for app in applications %}
+      # {% if app.oidc.is_some() %}
+      "{{ app.slug }}":
+        default_policy: deny
+        rules:
+          - policy: two_factor
+            subject:
+              - "group:{{ app.slug }}:users"
+              - "group:{{ app.slug }}:admins"
+      # {% endif %}
+      # {% endfor %}
+    clients:
+      # {% for app in applications %}
+      # {% if let Some(oidc) = app.oidc.as_ref() %}
+      - client_id: "{{ app.slug | xxh64 }}"
+        client_name: "{{ app.name }}"
+        authorization_policy: "{{ app.slug }}"
+        # {% if let Some(secret) = oidc.client_secret.as_ref() %}
+        client_secret: "{{ secret }}"
+        # {% else %}
+        public: true
+        require_pkce: true
+        # {% endif %}
+        pkce_challenge_method: S256
+        redirect_uris:
+          # {% for uri in oidc.redirect_uris %}
+          - "{{ uri }}"
+          # {% endfor %}
+      # {% endif %}
+      # {% endfor %}

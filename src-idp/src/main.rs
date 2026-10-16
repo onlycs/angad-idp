@@ -1,16 +1,13 @@
-use chrono::{TimeDelta, Utc};
+#![feature(option_zip)]
+
 use idp_proto::{
-    app::{
-        ApplicationCreate, ApplicationDelete, ApplicationList, ApplicationUpdate, DOMAIN_SLUG,
-        Membership,
-    },
+    app::{ApplicationCreate, ApplicationDelete, ApplicationList, ApplicationUpdate},
     integration::{IntegrationCreate, IntegrationDelete, IntegrationList, IntegrationUpdate},
     invite::{InviteCreate, InviteDelete, InviteList, InviteUpdate, InviteUse},
     user::{CheckPassword, UpdatePassword, UserDelete, UserList, UserUpdate},
 };
 use snafu::ResultExt;
 use sqlx::PgPool;
-use tracing::info;
 use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::SubscriberInitExt};
 use transit_core::{
     InternalError, InternalSnafu,
@@ -41,51 +38,6 @@ fn init_logger() {
 }
 
 async fn setup_domain(pg: &PgPool) -> Result<(), InternalError> {
-    sqlx::query!(
-        r#"
-        INSERT INTO applications
-        VALUES ($1, 'Angad IdP', $2)
-        ON CONFLICT DO NOTHING
-        "#,
-        DOMAIN_SLUG,
-        format!("{}/", &*common::FRONTEND_URL)
-    )
-    .execute(pg)
-    .await
-    .context(InternalSnafu)?;
-
-    let domain_adm = sqlx::query!(
-        r#"
-        SELECT u.id, u.username FROM roles r
-        JOIN users u ON r.uid = u.id
-        WHERE r.application = $1 AND r.admin = true
-        LIMIT 1
-        "#,
-        DOMAIN_SLUG
-    )
-    .fetch_optional(pg)
-    .await
-    .context(InternalSnafu)?;
-
-    if let Some(adm) = domain_adm {
-        info!(id = adm.id, username = adm.username, "Found domain admin");
-        return Ok(());
-    }
-
-    info!("No domain admin, creating...");
-
-    invite::create_impl(
-        common::INITIAL_ADMIN_EMAIL.clone(),
-        vec![Membership {
-            slug: DOMAIN_SLUG.to_string(),
-            admin: true,
-        }],
-        Utc::now() + TimeDelta::weeks(1),
-        pg,
-    )
-    .await
-    .context(InternalSnafu)?;
-
     Ok(())
 }
 

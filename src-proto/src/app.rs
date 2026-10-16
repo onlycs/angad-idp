@@ -1,4 +1,4 @@
-use transit_core::{error, record, route};
+use transit_core::{error, oneof, record, route};
 
 use crate::{auth::Authentication, error::Denied};
 
@@ -41,6 +41,8 @@ impl Membership {
 #[record]
 pub struct ApplicationOidc {
     pub redirect_uris: Vec<String>,
+    pub match_url: String,
+    pub public: bool,
 }
 
 #[record]
@@ -59,7 +61,29 @@ pub struct ApplicationCreateRequest {
 
 #[record]
 pub struct ApplicationCreateResponse {
+    /// iff app.oidc.public = false
     pub client_secret: Option<String>,
+}
+
+#[oneof]
+#[derive(PartialEq, Eq)]
+pub enum ApplicationPublicUpdate {
+    Keep,
+    Set(bool),
+    /// can be used only if public was false
+    RollClientSecret,
+}
+
+#[oneof]
+pub enum ApplicationOidcUpdate {
+    Keep,
+    Create(ApplicationOidc),
+    Modify {
+        redirect_uris: Option<Vec<String>>,
+        match_url: Option<String>,
+        public: ApplicationPublicUpdate,
+    },
+    Remove,
 }
 
 #[record]
@@ -68,14 +92,13 @@ pub struct ApplicationUpdateRequest {
     pub slug: String,
     pub name: Option<String>,
     pub url: Option<String>,
-    pub redirect_uris: Option<Vec<String>>,
-    pub roll_client_secret: bool,
+    pub oidc: ApplicationOidcUpdate,
 }
 
 #[record]
 pub struct ApplicationUpdateResponse {
     pub app: Application,
-    /// `redirect_uris` empty before update or `roll_client_secret` was true
+    /// iff req.oidc was Create or req.update.public was RollClientSecret
     pub client_secret: Option<String>,
 }
 
@@ -88,6 +111,8 @@ pub struct ApplicationDeleteRequest {
 error! {
     NoApplication("Application {slug:?} not found") { slug: String };
     NoApplicationOidc("Application {slug:?} does not have OIDC") { slug: String };
+    NotPrivate("Application {slug:?} is public, and does not have a client secret") { slug: String };
+    ApplicationOidcExists("Application {slug:?} already has an OIDC component") { slug: String };
 
     InvalidSlug("Invalid slug");
     InvalidAppName("Invalid name");
@@ -98,7 +123,7 @@ error! {
 
     ApplicationCreateError = InvalidSlug | InvalidAppName | InvalidUrl | InvalidRedirectUri | SlugInUse | AppNameInUse | Denied;
     ApplicationListError = Denied;
-    ApplicationUpdateError = NoApplication | NoApplicationOidc | InvalidAppName | InvalidUrl | InvalidRedirectUri | AppNameInUse | Denied;
+    ApplicationUpdateError = NoApplication | NoApplicationOidc | ApplicationOidcExists | NotPrivate | InvalidAppName | InvalidUrl | InvalidRedirectUri | AppNameInUse | Denied;
     ApplicationDeleteError = NoApplication | Denied;
 }
 

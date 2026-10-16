@@ -17,21 +17,6 @@ func Search(w ldapserver.ResponseWriter, m *ldapserver.Message) {
 	res := ldapserver.NewSearchResultDoneResponse(ldap.LDAPResultSuccess)
 	defer func() { w.Write(res) }()
 
-	rusers, eusers := proto.RouteUserList(api, proto.AuthenticationIntegration{
-		Field0: integration,
-	})
-
-	if _, handle, ret := HandleError[
-		proto.UserListFfiErrorTransit,
-		proto.UserListFfiErrorProtocol,
-	](eusers, message.LDAPResult(res)); handle {
-		if !ret {
-			slog.Warn(INTEGRATION_INVALID)
-			WriteISE(message.LDAPResult(res))
-		}
-		return
-	}
-
 	dn, err := ldap.ParseDN(string(req.BaseObject()))
 	if err != nil {
 		res.SetResultCode(ldapserver.LDAPResultInvalidDNSyntax)
@@ -41,31 +26,22 @@ func Search(w ldapserver.ResponseWriter, m *ldapserver.Message) {
 	rdns := dn.RDNs
 	n := len(rdns)
 
-	if n < 2 || n > 4 {
-		res.SetResultCode(ldapserver.LDAPResultInvalidDNSyntax)
+	if n < 2 || n > 4 || !VerifyDc(dn) {
 		return
 	}
 
-	// Validate the domain suffix.
-	for _, rdn := range rdns[1:] {
+	// ensure all rdns before cn/uid/mail attr is single-attributed
+	for _, rdn := range rdns[n/4:] { // if n == 4 this is 1: otherwise 0:
 		if len(rdn.Attributes) != 1 {
-			res.SetResultCode(ldapserver.LDAPResultInvalidDNSyntax)
+			res.SetResultCode(ldapserver.LDAPResultNotAllowedOnRDN)
 			return
 		}
-	}
-
-	base := rdns[n-1].Attributes[0]
-	second := rdns[n-2].Attributes[0]
-
-	if strings.ToLower(base.Type) != "dc" || strings.ToLower(base.Value) != "page" ||
-		strings.ToLower(second.Type) != "dc" || strings.ToLower(second.Value) != "angad" {
-		return
 	}
 
 	userPreds := []func(proto.User) bool{}
 	groupPreds := []func(Group) bool{}
 
-	// Validate the requested scope.
+	// ensure scope makes sense
 	scope := req.Scope()
 	if scope == ldap.ScopeChildren {
 		scope = ldap.ScopeWholeSubtree
@@ -77,19 +53,18 @@ func Search(w ldapserver.ResponseWriter, m *ldapserver.Message) {
 			return
 		}
 	case 3:
-		if scope != ldap.ScopeSingleLevel && scope != ldap.ScopeWholeSubtree {
+		if scope == ldap.ScopeBaseObject {
 			return
 		}
 	case 4:
-		if scope == ldap.ScopeSingleLevel || scope == ldap.ScopeChildren {
+		if scope == ldap.ScopeSingleLevel {
 			return
 		}
 	}
 
 	if n >= 3 {
 		ou := rdns[n-3].Attributes[0]
-		if strings.ToLower(ou.Type) != "ou" || (strings.ToLower(ou.Value) != "users" && strings.ToLower(ou.Value) != "groups") {
-			res.SetResultCode(ldapserver.LDAPResultInvalidDNSyntax)
+		if !VerifyOuAndDc(dn, "users") && !VerifyOuAndDc(dn, "groups") {
 			return
 		}
 
@@ -101,17 +76,13 @@ func Search(w ldapserver.ResponseWriter, m *ldapserver.Message) {
 
 			if n == 4 {
 				if len(rdns[0].Attributes) != 1 {
-					res.SetResultCode(ldapserver.LDAPResultInvalidDNSyntax)
+					res.SetResultCode(ldapserver.LDAPResultNotAllowedOnRDN)
 					return
 				}
 
 				attr := rdns[0].Attributes[0]
-				if attr.Type != "cn" {
-					return
-				}
-
 				groupPreds = append(groupPreds, func(g Group) bool {
-					return appToString(g.slug, g.admin) == attr.Value
+					return matchGroup(&g, attr.Type, attr.Value)
 				})
 			}
 
@@ -123,14 +94,26 @@ func Search(w ldapserver.ResponseWriter, m *ldapserver.Message) {
 			if n == 4 {
 				for _, attr := range rdns[0].Attributes {
 					userPreds = append(userPreds, func(u proto.User) bool {
-						return slices.Contains(
-							applicableValuesUser[string](&u, message.AttributeDescription(attr.Type)),
-							strings.ToLower(attr.Value),
-						)
+						return matchUser(&u, attr.Type, attr.Value)
 					})
 				}
 			}
 		}
+	}
+
+	users, eusers := proto.RouteUserList(Api, proto.AuthenticationIntegration{
+		Field0: Integration,
+	})
+
+	if _, handle, ret := HandleError[
+		proto.UserListFfiErrorTransit,
+		proto.UserListFfiErrorProtocol,
+	](eusers, (*message.LDAPResult)(&res)); handle {
+		if !ret {
+			slog.Warn(INTEGRATION_INVALID)
+			WriteISE((*message.LDAPResult)(&res))
+		}
+		return
 	}
 
 	preds := filtersApply(req.Filter())
@@ -138,12 +121,12 @@ func Search(w ldapserver.ResponseWriter, m *ldapserver.Message) {
 	groupPreds = append(groupPreds, preds.group)
 
 	// Collect matching entries.
-	groups := buildGroups(&rusers)
+	groups := buildGroups(&users)
 
 	validUsers := []proto.User{}
 	validGroups := []Group{}
 
-	for _, user := range rusers {
+	for _, user := range users {
 		if slices.ContainsFunc(userPreds, func(pred func(proto.User) bool) bool {
 			return !pred(user)
 		}) {
@@ -177,7 +160,7 @@ func Search(w ldapserver.ResponseWriter, m *ldapserver.Message) {
 		))
 
 		for _, attr := range attrs {
-			vals := returnValuesUser[message.AttributeValue](&user, message.AttributeDescription(attr))
+			vals := returnValuesUser(&user, message.AttributeDescription(attr))
 			if len(vals) == 0 {
 				continue
 			}
@@ -190,12 +173,12 @@ func Search(w ldapserver.ResponseWriter, m *ldapserver.Message) {
 
 	for _, group := range validGroups {
 		ent := ldapserver.NewSearchResultEntry(fmt.Sprint(
-			"cn=", appToString(group.slug, group.admin),
+			"cn=", membershipToString(group.toShip()),
 			",ou=groups,dc=angad,dc=page",
 		))
 
 		for _, attr := range attrs {
-			vals := returnValuesGroup[message.AttributeValue](&group, message.AttributeDescription(attr))
+			vals := returnValuesGroup(&group, message.AttributeDescription(attr))
 			if len(vals) == 0 {
 				continue
 			}
@@ -213,24 +196,34 @@ type Group struct {
 	members []*proto.User
 }
 
-func appToString(slug string, adm bool) string {
+func (self *Group) toShip() proto.Membership {
+	return proto.Membership{
+		Admin: self.admin,
+		Slug:  self.slug,
+	}
+}
+
+func membershipToString(ship proto.Membership) string {
 	var sadm string
-	if adm {
+	if ship.Admin {
 		sadm = proto.GroupSuffixAdmin()
 	} else {
 		sadm = proto.GroupSuffixUser()
 	}
 
-	return fmt.Sprint(slug, ":", sadm)
+	return fmt.Sprint(ship.Slug, ":", sadm)
 }
 
-func stringToApp(s string) (string, bool) {
+func membershipFromString(s string) proto.Membership {
 	slug, suffix, ok := strings.Cut(s, ":")
 	if !ok {
-		return s, false
+		return proto.Membership{Slug: slug, Admin: false}
 	}
 
-	return slug, suffix == proto.GroupSuffixAdmin()
+	return proto.Membership{
+		Slug:  slug,
+		Admin: suffix == proto.GroupSuffixAdmin(),
+	}
 }
 
 func buildGroups(users *[]proto.User) []Group {
@@ -240,17 +233,17 @@ func buildGroups(users *[]proto.User) []Group {
 		u := &(*users)[i]
 
 		for _, m := range u.Memberships {
-			s := appToString(m.Slug, m.Admin)
+			s := membershipToString(m)
 			mapped[s] = append(mapped[s], u)
 		}
 	}
 
 	res := make([]Group, 0, len(mapped))
 	for k, v := range mapped {
-		slug, adm := stringToApp(k)
+		ship := membershipFromString(k)
 		res = append(res, Group{
-			slug:    slug,
-			admin:   adm,
+			slug:    ship.Slug,
+			admin:   ship.Admin,
 			members: v,
 		})
 	}
@@ -305,107 +298,156 @@ func (self Preds) not() Preds {
 	return self
 }
 
-func applicableValuesUser[T ~string](self *proto.User, ldapKey message.AttributeDescription) []T {
-	switch strings.ToLower(string(ldapKey)) {
-	case "uid", "0.9.2342.19200300.100.1.1":
-		return []T{T(self.Id)}
-	case "cn", "2.5.4.3":
-		return []T{T(self.Username)}
-	case "mail", "0.9.2342.19200300.100.1.3":
-		return []T{T(self.Email)}
-	case "objectclass", "2.5.4.0":
-		return []T{
+func dnEqual(a, b string) bool {
+	da, err1 := ldap.ParseDN(a)
+	db, err2 := ldap.ParseDN(b)
+	if err1 != nil || err2 != nil {
+		return strings.EqualFold(a, b)
+	}
+	return da.EqualFold(db)
+}
+
+func matchUserCustom[K ~string](self *proto.User, ldapKey K, matches func(s string) bool) bool {
+	_ldapKey := string(ldapKey)
+	nrm := NormalizeKey(_ldapKey)
+	var anyOf []string
+
+	if nrm == nil {
+		return false
+	}
+
+	switch *nrm {
+	case "uid":
+		anyOf = []string{self.Id}
+	case "cn":
+		anyOf = []string{self.Username}
+	case "mail":
+		anyOf = []string{self.Email}
+	case "objectClass":
+		anyOf = []string{
 			"top", "2.5.6.0",
 			"person", "2.5.6.6",
 			"organizationalperson", "2.5.6.7",
 			"inetorgperson", "2.16.840.1.113730.3.2.2",
 		}
-	case "memberof", "1.2.840.113556.1.2.102":
-		res := make([]T, 0, len(self.Memberships))
+	case "memberOf":
+		anyOf = make([]string, 0, len(self.Memberships))
 
 		for _, ship := range self.Memberships {
-			res = append(res, T(fmt.Sprint(
-				"cn=", appToString(ship.Slug, ship.Admin),
+			anyOf = append(anyOf, fmt.Sprint(
+				"cn=", membershipToString(ship),
 				",ou=groups,dc=angad,dc=page",
-			)))
+			))
 		}
-
-		return res
-	default:
-		return []T{}
 	}
+
+	return slices.ContainsFunc(anyOf, matches)
 }
 
-func returnValuesUser[T ~string](self *proto.User, ldapKey message.AttributeDescription) []T {
-	switch strings.ToLower(string(ldapKey)) {
-	case "uid", "0.9.2342.19200300.100.1.1":
-		return []T{T(self.Id)}
-	case "cn", "2.5.4.3":
-		return []T{T(self.Username)}
-	case "mail", "0.9.2342.19200300.100.1.3":
-		return []T{T(self.Email)}
-	case "objectclass", "2.5.4.0":
-		return []T{
+func matchUser[K ~string, T ~string](self *proto.User, ldapKey K, matchTo T) bool {
+	_matchTo := string(matchTo)
+
+	return matchUserCustom(self, ldapKey, func(s string) bool {
+		return strings.EqualFold(s, _matchTo) || dnEqual(s, _matchTo)
+	})
+}
+
+func matchGroupCustom[K ~string](self *Group, ldapKey K, matches func(s string) bool) bool {
+	_ldapKey := string(ldapKey)
+	nrm := NormalizeKey(_ldapKey)
+	var anyOf []string
+
+	if nrm == nil {
+		return false
+	}
+
+	switch *nrm {
+	case "cn":
+		anyOf = []string{membershipToString(self.toShip())}
+	case "objectClass":
+		anyOf = []string{
+			"top", "2.5.6.0",
+			"groupOfNames", "2.5.6.9",
+		}
+	case "member":
+		anyOf = make([]string, 0, len(self.members))
+
+		for _, member := range self.members {
+			anyOf = append(anyOf, fmt.Sprint(
+				"uid=", member.Id,
+				",ou=users,dc=angad,dc=page",
+			))
+		}
+	}
+
+	return slices.ContainsFunc(anyOf, matches)
+}
+
+func matchGroup[K ~string, T ~string](self *Group, ldapKey K, matchTo T) bool {
+	_matchTo := string(matchTo)
+
+	return matchGroupCustom(self, ldapKey, func(s string) bool {
+		return strings.EqualFold(s, _matchTo) || dnEqual(s, _matchTo)
+	})
+}
+
+func returnValuesUser(self *proto.User, ldapKey message.AttributeDescription) []message.AttributeValue {
+	nrm := NormalizeKey(string(ldapKey))
+
+	if nrm == nil {
+		return []message.AttributeValue{}
+	}
+
+	switch *nrm {
+	case "uid":
+		return []message.AttributeValue{message.AttributeValue(self.Id)}
+	case "cn":
+		return []message.AttributeValue{message.AttributeValue(self.Username)}
+	case "mail":
+		return []message.AttributeValue{message.AttributeValue(self.Email)}
+	case "objectClass":
+		return []message.AttributeValue{
 			"top",
 			"person",
 			"organizationalPerson",
 			"inetOrgPerson",
 		}
-	case "memberof", "1.2.840.113556.1.2.102":
-		res := make([]T, 0, len(self.Memberships))
+	case "memberOf":
+		res := make([]message.AttributeValue, 0, len(self.Memberships))
 
 		for _, ship := range self.Memberships {
-			res = append(res, T(fmt.Sprint(
-				"cn=", appToString(ship.Slug, ship.Admin),
+			res = append(res, message.AttributeValue(fmt.Sprint(
+				"cn=", membershipToString(ship),
 				",ou=groups,dc=angad,dc=page",
 			)))
 		}
 
 		return res
 	default:
-		return []T{}
+		return []message.AttributeValue{}
 	}
 }
 
-func applicableValuesGroup[T ~string](self *Group, ldapKey message.AttributeDescription) []T {
-	switch strings.ToLower(string(ldapKey)) {
-	case "cn", "2.5.4.3":
-		return []T{T(appToString(self.slug, self.admin))}
-	case "objectclass", "2.5.4.0":
-		return []T{
-			"top", "2.5.6.0",
-			"groupofnames", "2.5.6.9",
-		}
-	case "member", "2.5.4.31":
-		res := make([]T, 0, len(self.members))
+func returnValuesGroup(self *Group, ldapKey message.AttributeDescription) []message.AttributeValue {
+	nrm := NormalizeKey(string(ldapKey))
 
-		for _, member := range self.members {
-			res = append(res, T(fmt.Sprint(
-				"uid=", member.Id,
-				",ou=users,dc=angad,dc=page",
-			)))
-		}
-
-		return res
-	default:
-		return []T{}
+	if nrm == nil {
+		return []message.AttributeValue{}
 	}
-}
 
-func returnValuesGroup[T ~string](self *Group, ldapKey message.AttributeDescription) []T {
-	switch strings.ToLower(string(ldapKey)) {
-	case "cn", "2.5.4.3":
-		return []T{T(appToString(self.slug, self.admin))}
-	case "objectclass", "2.5.4.0":
-		return []T{
+	switch *nrm {
+	case "cn":
+		return []message.AttributeValue{message.AttributeValue(membershipToString(self.toShip()))}
+	case "objectClass":
+		return []message.AttributeValue{
 			"top",
 			"groupOfNames",
 		}
-	case "member", "2.5.4.31":
-		res := make([]T, 0, len(self.members))
+	case "member":
+		res := make([]message.AttributeValue, 0, len(self.members))
 
 		for _, member := range self.members {
-			res = append(res, T(fmt.Sprint(
+			res = append(res, message.AttributeValue(fmt.Sprint(
 				"uid=", member.Id,
 				",ou=users,dc=angad,dc=page",
 			)))
@@ -413,11 +455,11 @@ func returnValuesGroup[T ~string](self *Group, ldapKey message.AttributeDescript
 
 		return res
 	default:
-		return []T{}
+		return []message.AttributeValue{}
 	}
 }
 
-func matches(s string, subs []message.Substring) bool {
+func matchSubstrings(s string, subs []message.Substring) bool {
 	s = strings.ToLower(s)
 
 	for _, substr := range subs {
@@ -496,13 +538,13 @@ func filtersApply(filter message.Filter) Preds {
 
 		return Preds{
 			user: func(u proto.User) bool {
-				return slices.ContainsFunc(applicableValuesUser[string](&u, key), func(s string) bool {
-					return matches(s, subs)
+				return matchUserCustom(&u, key, func(s string) bool {
+					return matchSubstrings(s, subs)
 				})
 			},
 			group: func(g Group) bool {
-				return slices.ContainsFunc(applicableValuesGroup[string](&g, key), func(s string) bool {
-					return matches(s, subs)
+				return matchGroupCustom(&g, key, func(s string) bool {
+					return matchSubstrings(s, subs)
 				})
 			},
 		}
@@ -512,10 +554,10 @@ func filtersApply(filter message.Filter) Preds {
 
 		return Preds{
 			func(u proto.User) bool {
-				return len(applicableValuesUser[string](&u, key)) > 0
+				return matchUserCustom(&u, key, func(s string) bool { return true })
 			},
 			func(g Group) bool {
-				return len(applicableValuesGroup[string](&g, key)) > 0
+				return matchGroupCustom(&g, key, func(s string) bool { return true })
 			},
 		}
 
@@ -528,15 +570,14 @@ func filtersApply(filter message.Filter) Preds {
 
 equality:
 	key := assertion.AttributeDesc()
-	value := string(assertion.AssertionValue())
-	eq := func(s string) bool { return strings.EqualFold(s, value) }
+	value := assertion.AssertionValue()
 
 	return Preds{
 		user: func(u proto.User) bool {
-			return slices.ContainsFunc(applicableValuesUser[string](&u, key), eq)
+			return matchUser(&u, key, value)
 		},
 		group: func(g Group) bool {
-			return slices.ContainsFunc(applicableValuesGroup[string](&g, key), eq)
+			return matchGroup(&g, key, value)
 		},
 	}
 }
