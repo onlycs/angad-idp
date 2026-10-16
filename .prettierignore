@@ -1,11 +1,13 @@
 # rust and go projects
 src-api/**
-src-wasm/**
 src-proto/**
 src-ldap/**
+thirdparty/**
 
 # filetypes
 **/*.toml
 
 bun.lock
 bun.lockb
+
+static/wasm/**

@@ -61,7 +61,6 @@ fmt:
 	@echo "=== Formatting code"
 	bun fmt
 	cd src-idp && cargo fmt
-	cd src-wasm && cargo fmt
 	cd src-ldap && go fmt
 	cd src-proto && cargo fmt
 
