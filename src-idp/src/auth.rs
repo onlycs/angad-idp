@@ -2,66 +2,57 @@ use idp_proto::{
     auth::{AccessLevel, Authentication, AuthenticationStrict},
     error::Denied,
 };
+use snafu::{OptionExt, ResultExt};
 use sqlx::PgPool;
-use transit_core::InternalError;
+use transit_core::{InternalErrorContext, error};
 
 use crate::{app, common, token, user};
+
+error! {
+    AuthError = Denied;
+}
 
 async fn authenticate_integration(
     key: String,
     level: AccessLevel,
     pg: &PgPool,
-) -> Result<Result<(), Denied>, InternalError> {
-    let res = sqlx::query!(
+) -> Result<(), AuthError> {
+    let read_only = sqlx::query_scalar!(
         r#"SELECT read_only FROM integrations WHERE key_hash = $1"#,
         common::sha256(key.as_bytes())
     )
-    .fetch_one(pg)
-    .await;
+    .fetch_optional(pg)
+    .await
+    .context(InternalErrorContext!(via(display), common::ERROR_DB))?
+    .context(Denied)?;
 
-    let auth = match res {
-        Ok(auth) => auth,
-        Err(sqlx::Error::RowNotFound) => return Ok(Err(Denied)),
-        Err(other) => {
-            return Err(InternalError!(ctx(display other), common::ERROR_DB));
-        }
-    };
-
-    if auth.read_only && level == AccessLevel::ReadWrite {
-        return Ok(Err(Denied));
+    if read_only && level == AccessLevel::ReadWrite {
+        return Err(Denied.into());
     }
 
-    Ok(Ok(()))
+    Ok(())
 }
 
 pub(crate) async fn authenticate(
     auth: Authentication,
     level: AccessLevel,
     pg: &PgPool,
-) -> Result<Result<(), Denied>, InternalError> {
+) -> Result<(), AuthError> {
     match auth {
         Authentication::Token(token) => {
-            let token = match token::parse(&token)? {
-                Ok(token) => token,
-                Err(denied) => return Ok(Err(denied)),
-            };
+            let token = token::parse(&token)?;
 
-            let perms = match sqlx::query!(
+            let perms = sqlx::query!(
                 r#"
                 SELECT updated_at FROM users
                 WHERE id = $1;
                 "#,
                 token.uid,
             )
-            .fetch_one(pg)
+            .fetch_optional(pg)
             .await
-            {
-                Ok(perms) => perms,
-                Err(sqlx::Error::RowNotFound) => return Ok(Err(Denied)),
-                Err(other) => {
-                    return Err(InternalError!(ctx(display other), common::ERROR_DB));
-                }
-            };
+            .context(InternalErrorContext!(via(display), common::ERROR_DB))?
+            .context(Denied)?;
 
             if perms.updated_at > token.issued
                 || token
@@ -69,10 +60,10 @@ pub(crate) async fn authenticate(
                     .iter()
                     .any(|ship| ship.slug == app::DOMAIN_SLUG && ship.admin)
             {
-                return Ok(Err(Denied));
+                return Err(Denied.into());
             }
 
-            Ok(Ok(()))
+            Ok(())
         }
         Authentication::Integration(key) => authenticate_integration(key, level, pg).await,
     }
@@ -82,10 +73,10 @@ pub(crate) async fn authenticate_strict(
     auth: AuthenticationStrict,
     level: AccessLevel,
     pg: &PgPool,
-) -> Result<Result<(), Denied>, InternalError> {
+) -> Result<(), AuthError> {
     match auth {
         AuthenticationStrict::Password { uid, password } => {
-            let hashed = match sqlx::query!(
+            let hashed = sqlx::query_scalar!(
                 r#"
                 SELECT password_hash
                 FROM users
@@ -93,21 +84,16 @@ pub(crate) async fn authenticate_strict(
                 "#,
                 uid,
             )
-            .fetch_one(pg)
+            .fetch_optional(pg)
             .await
-            {
-                Ok(hashed) => hashed,
-                Err(sqlx::Error::RowNotFound) => return Ok(Err(Denied)),
-                Err(other) => {
-                    return Err(InternalError!(ctx(display other), common::ERROR_DB));
-                }
-            };
+            .context(InternalErrorContext!(via(display), common::ERROR_DB))?
+            .context(Denied)?;
 
-            if let Err(_incorrect) = user::verify_password(&hashed.password_hash, &password) {
-                return Ok(Err(Denied));
+            if let Err(_incorrect) = user::verify_password(&hashed, &password) {
+                return Err(Denied.into());
             }
 
-            Ok(Ok(()))
+            Ok(())
         }
         AuthenticationStrict::Integration(key) => authenticate_integration(key, level, pg).await,
     }

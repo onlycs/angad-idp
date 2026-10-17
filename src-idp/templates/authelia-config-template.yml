@@ -3,7 +3,7 @@ authentication_backend:
   refresh_interval: 5 minutes
   password_reset:
     disable: true
-    custom_url: "{{ FRONTEND_URL }}/forgot"
+    custom_url: "{{ &*FRONTEND_URL }}/forgot"
   password_change:
     disable: true
   ldap:
@@ -58,8 +58,8 @@ password_policy:
 session:
   # todo: secret: via env
   cookies:
-    - domain: "{{ AUTHELIA_DOMAIN }}"
-      authelia_url: "https://{{ AUTHELIA_DOMAIN }}"
+    - domain: "{{ &*AUTHELIA_DOMAIN }}"
+      authelia_url: "https://{{ &*AUTHELIA_DOMAIN }}"
   redis:
     # todo: host, port: via env
     tls:
@@ -78,7 +78,7 @@ notifier:
     # todo: address: via env (use smtp://addr:port)
     # todo: username, password: via env
     # todo: sender: via env (use '"Name" <email>')
-    identifier: "{{ AUTHELIA_DOMAIN }}"
+    identifier: "{{ &*AUTHELIA_DOMAIN }}"
     subject: "[Angad Auth] {title}"
 telemetry:
   metrics:
@@ -107,7 +107,7 @@ identity_providers:
       - client_id: "{{ app.slug | xxh64 }}"
         client_name: "{{ app.name }}"
         authorization_policy: "{{ app.slug }}"
-        # {% if let Some(secret) = oidc.client_secret.as_ref() %}
+        # {% if let Some(secret) = oidc.client_secret_hash.as_ref() %}
         client_secret: "{{ secret }}"
         # {% else %}
         public: true

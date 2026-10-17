@@ -11,7 +11,11 @@ use snafu::prelude::*;
 use sqlx::{PgPool, types::Json};
 use transit_core::{InternalError, InternalErrorContext, TransitErrorContext};
 
-use crate::{app, auth, common, token};
+use crate::{
+    app::{self, VerifyErrorCast},
+    auth::{self, AuthErrorCast},
+    common, token,
+};
 
 pub(crate) fn ensure_password_strength(
     password: &str,
@@ -81,7 +85,9 @@ pub(crate) async fn list(
     auth: Authentication,
     pg: Arc<PgPool>,
 ) -> Result<Vec<User>, UserListError> {
-    auth::authenticate(auth, AccessLevel::Read, &pg).await??;
+    auth::authenticate(auth, AccessLevel::Read, &pg)
+        .await
+        .context(AuthErrorCast::<UserListError>)?;
 
     let users = sqlx::query!(
         r#"
@@ -130,7 +136,7 @@ pub(crate) async fn update(
     pg: Arc<PgPool>,
 ) -> Result<User, UserUpdateError> {
     let wants_update_self = if let Authentication::Token(token) = &auth {
-        let identity = token::parse(token)??;
+        let identity = token::parse(token).context(AuthErrorCast::<UserUpdateError>)?;
 
         id == *identity.uid
     } else {
@@ -138,7 +144,9 @@ pub(crate) async fn update(
     };
 
     if !wants_update_self {
-        auth::authenticate(auth, AccessLevel::ReadWrite, &pg).await??;
+        auth::authenticate(auth, AccessLevel::ReadWrite, &pg)
+            .await
+            .context(AuthErrorCast::<UserUpdateError>)?;
     }
 
     snafu::ensure!(
@@ -155,7 +163,9 @@ pub(crate) async fn update(
     let split_roles = memberships.as_ref().map(app::split_roles);
 
     if let Some((slugs, _)) = &split_roles {
-        app::verify(slugs.as_slice(), &pg).await??;
+        app::verify(slugs.as_slice(), &pg)
+            .await
+            .context(VerifyErrorCast::<UserUpdateError>)?;
     }
 
     let mut tx = pg
@@ -263,7 +273,9 @@ pub(crate) async fn update_password(
     UpdatePasswordRequest { auth, id, password }: UpdatePasswordRequest,
     pg: Arc<PgPool>,
 ) -> Result<(), UpdatePasswordError> {
-    auth::authenticate_strict(auth, AccessLevel::ReadWrite, &pg).await??;
+    auth::authenticate_strict(auth, AccessLevel::ReadWrite, &pg)
+        .await
+        .context(AuthErrorCast::<UpdatePasswordError>)?;
 
     let user = sqlx::query!(r#"SELECT username, email FROM users WHERE id = $1"#, id)
         .fetch_optional(&*pg)
@@ -305,12 +317,15 @@ pub(crate) async fn delete(req: UserDeleteRequest, pg: Arc<PgPool>) -> Result<()
                 AccessLevel::ReadWrite,
                 &pg,
             )
-            .await??;
+            .await
+            .context(AuthErrorCast::<UserDeleteError>)?;
 
             uid
         }
         UserDeleteRequest::DeleteOther { auth, uid } => {
-            auth::authenticate(auth, AccessLevel::ReadWrite, &pg).await??;
+            auth::authenticate(auth, AccessLevel::ReadWrite, &pg)
+                .await
+                .context(AuthErrorCast::<UserDeleteError>)?;
 
             uid
         }

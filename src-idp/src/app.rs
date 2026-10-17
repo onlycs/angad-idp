@@ -8,20 +8,22 @@ use idp_proto::{
 use itertools::Itertools;
 use snafu::prelude::*;
 use sqlx::PgPool;
-use transit_core::{InternalError, InternalErrorContext};
+use transit_core::{InternalError, InternalErrorContext, error};
 
 use crate::{
-    auth,
+    auth::{self, AuthErrorCast},
+    authelia,
     common::{self, NAME_RE, SLUG_RE, URI_RE, URL_RE},
 };
 
 pub(crate) const DOMAIN_NAME: &str = "Angad IdP";
 pub(crate) use idp_proto::app::DOMAIN_SLUG;
 
-pub(crate) async fn verify(
-    slugs: &[String],
-    pg: &PgPool,
-) -> Result<Result<(), NoApplication>, InternalError> {
+error! {
+    VerifyError = NoApplication;
+}
+
+pub(crate) async fn verify(slugs: &[String], pg: &PgPool) -> Result<(), VerifyError> {
     sqlx::query_scalar!(
         r#"
         SELECT requested.slug
@@ -37,11 +39,11 @@ pub(crate) async fn verify(
     )
     .fetch_optional(pg)
     .await
-    .context(InternalErrorContext!(via(display), common::ERROR_DB))
-    .map(|it| match it {
-        Some(Some(missing)) => Err(NoApplication { slug: missing }),
-        _ => Ok(()),
-    })
+    .context(InternalErrorContext!(via(display), common::ERROR_DB))?
+    .flatten()
+    .map_or(Ok(()), |missing| Err(NoApplication { slug: missing }))?;
+
+    Ok(())
 }
 
 #[allow(clippy::ptr_arg)]
@@ -127,6 +129,8 @@ pub(crate) async fn create_impl(
         .await
         .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
+    tokio::spawn(authelia::regenerate(pg.clone()));
+
     Ok(res)
 }
 
@@ -135,7 +139,10 @@ pub(crate) async fn create(
     ApplicationCreateRequest { auth, app }: ApplicationCreateRequest,
     pg: Arc<PgPool>,
 ) -> Result<ApplicationCreateResponse, ApplicationCreateError> {
-    auth::authenticate(auth, AccessLevel::ReadWrite, &pg).await??;
+    auth::authenticate(auth, AccessLevel::ReadWrite, &pg)
+        .await
+        .context(AuthErrorCast::<ApplicationCreateError>)?;
+
     create_impl(app, &pg).await
 }
 
@@ -144,7 +151,9 @@ pub(crate) async fn list(
     auth: Authentication,
     pg: Arc<PgPool>,
 ) -> Result<Vec<Application>, ApplicationListError> {
-    auth::authenticate(auth, AccessLevel::Read, &pg).await??;
+    auth::authenticate(auth, AccessLevel::Read, &pg)
+        .await
+        .context(AuthErrorCast::<ApplicationListError>)?;
 
     let apps = sqlx::query!(
         r#"
@@ -190,7 +199,9 @@ pub(crate) async fn update(
     }: ApplicationUpdateRequest,
     pg: Arc<PgPool>,
 ) -> Result<ApplicationUpdateResponse, ApplicationUpdateError> {
-    auth::authenticate(auth, AccessLevel::ReadWrite, &pg).await??;
+    auth::authenticate(auth, AccessLevel::ReadWrite, &pg)
+        .await
+        .context(AuthErrorCast::<ApplicationUpdateError>)?;
 
     let mut tx = pg
         .begin()
@@ -359,6 +370,8 @@ pub(crate) async fn update(
         .await
         .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
+    tokio::spawn(authelia::regenerate(pg));
+
     Ok(ApplicationUpdateResponse {
         app: Application {
             slug: slug.clone(),
@@ -375,7 +388,9 @@ pub(crate) async fn delete(
     ApplicationDeleteRequest { auth, slug }: ApplicationDeleteRequest,
     pg: Arc<PgPool>,
 ) -> Result<(), ApplicationDeleteError> {
-    auth::authenticate(auth, AccessLevel::ReadWrite, &pg).await??;
+    auth::authenticate(auth, AccessLevel::ReadWrite, &pg)
+        .await
+        .context(AuthErrorCast::<ApplicationDeleteError>)?;
 
     let res = sqlx::query!(
         r#"
@@ -391,6 +406,8 @@ pub(crate) async fn delete(
     if res.rows_affected() == 0 {
         return Err(NoApplication { slug }.into());
     }
+
+    tokio::spawn(authelia::regenerate(pg));
 
     Ok(())
 }

@@ -16,7 +16,8 @@ use sqlx::{PgConnection, PgPool, types::Json};
 use transit_core::{InternalError, InternalErrorContext, TransitErrorContext};
 
 use crate::{
-    app, auth,
+    app::{self, VerifyErrorCast},
+    auth::{self, AuthErrorCast},
     common::{self, EMAIL_RE},
     user,
 };
@@ -70,7 +71,9 @@ pub(crate) async fn create_impl(
 
     snafu::ensure!(existing.is_none(), EmailInUse);
 
-    app::verify(role_slugs.as_slice(), pg).await??;
+    app::verify(role_slugs.as_slice(), pg)
+        .await
+        .context(VerifyErrorCast::<InviteCreateError>)?;
 
     let mut tx = pg
         .begin()
@@ -105,7 +108,7 @@ pub(crate) async fn create_impl(
         .subject("Invitiation to Angad Auth")
         .header(ContentType::TEXT_HTML)
         .body(
-            include_str!("../assets/invite-email-template.html").replace(
+            include_str!("../templates/invite-email-template.html").replace(
                 "{{invite_url}}",
                 format!("{}/invite?token={token}", *common::FRONTEND_URL).as_str(),
             ),
@@ -135,7 +138,10 @@ pub(crate) async fn create(
     }: InviteCreateRequest,
     pg: Arc<PgPool>,
 ) -> Result<Invite, InviteCreateError> {
-    auth::authenticate(auth, AccessLevel::ReadWrite, &pg).await??;
+    auth::authenticate(auth, AccessLevel::ReadWrite, &pg)
+        .await
+        .context(AuthErrorCast::<InviteCreateError>)?;
+
     create_impl(email, memberships, parse_expiry(exp)?, &pg).await
 }
 
@@ -144,7 +150,9 @@ pub(crate) async fn list(
     auth: Authentication,
     pg: Arc<PgPool>,
 ) -> Result<Vec<Invite>, InviteListError> {
-    auth::authenticate(auth, AccessLevel::Read, &pg).await??;
+    auth::authenticate(auth, AccessLevel::Read, &pg)
+        .await
+        .context(AuthErrorCast::<InviteListError>)?;
 
     let invites = sqlx::query!(
         r#"
@@ -191,7 +199,9 @@ pub(crate) async fn update(
     }: InviteUpdateRequest,
     pg: Arc<PgPool>,
 ) -> Result<Invite, InviteUpdateError> {
-    auth::authenticate(auth, AccessLevel::ReadWrite, &pg).await??;
+    auth::authenticate(auth, AccessLevel::ReadWrite, &pg)
+        .await
+        .context(AuthErrorCast::<InviteUpdateError>)?;
 
     let key_hash = hex::decode(&id).context(TransitErrorContext!(NoInvite))?;
     let exp = exp.map(parse_expiry).transpose()?;
@@ -274,7 +284,9 @@ pub(crate) async fn delete(
     InviteDeleteRequest { auth, id }: InviteDeleteRequest,
     pg: Arc<PgPool>,
 ) -> Result<(), InviteDeleteError> {
-    auth::authenticate(auth, AccessLevel::ReadWrite, &pg).await??;
+    auth::authenticate(auth, AccessLevel::ReadWrite, &pg)
+        .await
+        .context(AuthErrorCast::<InviteDeleteError>)?;
 
     let res = sqlx::query!(
         r#"

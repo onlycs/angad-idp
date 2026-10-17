@@ -1,6 +1,7 @@
 use chrono::Utc;
-use idp_proto::{app::Membership, error::Denied};
-use transit_core::InternalError;
+use idp_proto::app::Membership;
+
+use crate::auth::AuthError;
 
 pub(crate) struct AutheliaToken {
     pub(crate) uid: String,
@@ -10,8 +11,6 @@ pub(crate) struct AutheliaToken {
     pub(crate) issued: chrono::DateTime<Utc>,
 }
 
-pub(crate) fn parse(
-    token: impl AsRef<str>,
-) -> Result<Result<AutheliaToken, Denied>, InternalError> {
+pub(crate) fn parse(token: impl AsRef<str>) -> Result<AutheliaToken, AuthError> {
     todo!("figure out how authelia works")
 }

@@ -9,7 +9,7 @@ use sqlx::PgPool;
 use transit_core::{InternalError, InternalErrorContext};
 
 use crate::{
-    auth,
+    auth::{self, AuthErrorCast},
     common::{self, NAME_RE},
 };
 
@@ -18,7 +18,10 @@ pub(crate) async fn create(
     IntegrationCreateRequest { auth, name, access }: IntegrationCreateRequest,
     pg: Arc<PgPool>,
 ) -> Result<IntegrationCreateResponse, IntegrationCreateError> {
-    auth::authenticate(auth, AccessLevel::ReadWrite, &pg).await??;
+    auth::authenticate(auth, AccessLevel::ReadWrite, &pg)
+        .await
+        .context(AuthErrorCast::<IntegrationCreateError>)?;
+
     snafu::ensure!(NAME_RE.is_match(&name), InvalidIntegrationName);
 
     let id = cuid2::cuid();
@@ -50,7 +53,9 @@ pub(crate) async fn list(
     auth: Authentication,
     pg: Arc<PgPool>,
 ) -> Result<Vec<Integration>, IntegrationListError> {
-    auth::authenticate(auth, AccessLevel::Read, &pg).await??;
+    auth::authenticate(auth, AccessLevel::Read, &pg)
+        .await
+        .context(AuthErrorCast::<IntegrationListError>)?;
 
     let integrations = sqlx::query!(
         r#"
@@ -87,7 +92,9 @@ pub(crate) async fn update(
     }: IntegrationUpdateRequest,
     pg: Arc<PgPool>,
 ) -> Result<IntegrationUpdateResponse, IntegrationUpdateError> {
-    auth::authenticate(auth, AccessLevel::ReadWrite, &pg).await??;
+    auth::authenticate(auth, AccessLevel::ReadWrite, &pg)
+        .await
+        .context(AuthErrorCast::<IntegrationUpdateError>)?;
     snafu::ensure!(
         name.as_ref().is_none_or(|n| common::NAME_RE.is_match(n)),
         InvalidIntegrationName
@@ -147,7 +154,9 @@ pub(crate) async fn delete(
     IntegrationDeleteRequest { auth, id }: IntegrationDeleteRequest,
     pg: Arc<PgPool>,
 ) -> Result<(), IntegrationDeleteError> {
-    auth::authenticate(auth, AccessLevel::ReadWrite, &pg).await??;
+    auth::authenticate(auth, AccessLevel::ReadWrite, &pg)
+        .await
+        .context(AuthErrorCast::<IntegrationDeleteError>)?;
 
     let res = sqlx::query!(
         r#"

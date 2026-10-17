@@ -1,4 +1,5 @@
-#![feature(option_zip)]
+#![feature(option_zip, error_generic_member_access)]
+#![allow(unexpected_cfgs)]
 
 use chrono::{TimeDelta, Utc};
 use idp_proto::{
@@ -7,20 +8,18 @@ use idp_proto::{
         ApplicationOidc, ApplicationUpdate, Membership,
     },
     integration::{IntegrationCreate, IntegrationDelete, IntegrationList, IntegrationUpdate},
-    invite::{InviteCreate, InviteDelete, InviteList, InviteUpdate, InviteUse},
+    invite::{InviteCreate, InviteCreateError, InviteDelete, InviteList, InviteUpdate, InviteUse},
     user::{CheckPassword, UpdatePassword, UserDelete, UserList, UserUpdate},
 };
-use snafu::ResultExt;
+use snafu::{Location, ResultExt, Snafu};
 use sqlx::PgPool;
 use tracing::info;
 use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::SubscriberInitExt};
-use transit_core::{
-    InternalError, InternalSnafu,
-    server::{self, Router, TcpListenOptions},
-};
+use transit_core::server::{self, Router, TcpListenOptions};
 
 mod app;
 mod auth;
+mod authelia;
 mod common;
 mod integration;
 mod invite;
@@ -42,7 +41,55 @@ fn init_logger() {
     tracing_subscriber::registry().with(filter).with(fmt).init();
 }
 
-async fn setup_domain(pg: &PgPool) -> Result<(), InternalError> {
+#[derive(Snafu, Debug)]
+pub enum DomainSetupError {
+    #[snafu(display("At {location}: Failed to create internal application\n{source}"))]
+    ApplicationCreate {
+        source: ApplicationCreateError,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("At {location}: Failed to send internal invite\n{source}"))]
+    InviteSend {
+        source: InviteCreateError,
+        #[snafu(implicit)]
+        location: Location,
+    },
+}
+
+#[derive(Snafu, Debug)]
+pub enum StartupError {
+    #[snafu(display("At {location}: Failed to set up domain\n{source}"))]
+    DomainSetup {
+        source: DomainSetupError,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("At {location}: Database error\n{source}"))]
+    Db {
+        source: sqlx::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("At {location}: Migration error\n{source}"))]
+    Migrate {
+        source: sqlx::migrate::MigrateError,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("At {location}: Listen error\n{source}"))]
+    Listen {
+        source: transit_core::server::ListenError,
+        #[snafu(implicit)]
+        location: Location,
+    },
+}
+
+async fn setup_domain(pg: &PgPool) -> Result<(), DomainSetupError> {
     match app::create_impl(
         Application {
             slug: app::DOMAIN_SLUG.to_string(),
@@ -60,11 +107,8 @@ async fn setup_domain(pg: &PgPool) -> Result<(), InternalError> {
         Ok(_) => {}
         Err(ApplicationCreateError::AppNameInUse { .. }) => return Ok(()),
         Err(ApplicationCreateError::SlugInUse { .. }) => return Ok(()),
-        Err(failure) => {
-            return Err(InternalError!(
-                ctx(failure),
-                "Creating internal application failed"
-            ));
+        other => {
+            other.context(ApplicationCreateSnafu)?;
         }
     }
 
@@ -78,7 +122,7 @@ async fn setup_domain(pg: &PgPool) -> Result<(), InternalError> {
         pg,
     )
     .await
-    .context(InternalSnafu)?;
+    .context(InviteSendSnafu)?;
 
     info!(
         email = invite.email,
@@ -90,18 +134,18 @@ async fn setup_domain(pg: &PgPool) -> Result<(), InternalError> {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), InternalError> {
+async fn main() -> Result<(), StartupError> {
     init_logger();
     dotenvy::dotenv().ok();
     common::env_check_all();
 
     let pool = sqlx::PgPool::connect(common::DATABASE_URL.as_str())
         .await
-        .context(InternalSnafu)?;
+        .context(DbSnafu)?;
 
-    sqlx::migrate!().run(&pool).await.context(InternalSnafu)?;
+    sqlx::migrate!().run(&pool).await.context(MigrateSnafu)?;
 
-    setup_domain(&pool).await?;
+    setup_domain(&pool).await.context(DomainSetupSnafu)?;
 
     let router = Router::new(pool)
         // Application CRUD
@@ -137,7 +181,7 @@ async fn main() -> Result<(), InternalError> {
         router,
     )
     .await
-    .context(InternalSnafu)?;
+    .context(ListenSnafu)?;
 
     Ok(())
 }
