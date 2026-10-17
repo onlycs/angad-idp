@@ -1,13 +1,18 @@
 #![feature(option_zip)]
 
+use chrono::{TimeDelta, Utc};
 use idp_proto::{
-    app::{ApplicationCreate, ApplicationDelete, ApplicationList, ApplicationUpdate},
+    app::{
+        Application, ApplicationCreate, ApplicationCreateError, ApplicationDelete, ApplicationList,
+        ApplicationOidc, ApplicationUpdate, Membership,
+    },
     integration::{IntegrationCreate, IntegrationDelete, IntegrationList, IntegrationUpdate},
     invite::{InviteCreate, InviteDelete, InviteList, InviteUpdate, InviteUse},
     user::{CheckPassword, UpdatePassword, UserDelete, UserList, UserUpdate},
 };
 use snafu::ResultExt;
 use sqlx::PgPool;
+use tracing::info;
 use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::SubscriberInitExt};
 use transit_core::{
     InternalError, InternalSnafu,
@@ -38,6 +43,49 @@ fn init_logger() {
 }
 
 async fn setup_domain(pg: &PgPool) -> Result<(), InternalError> {
+    match app::create_impl(
+        Application {
+            slug: app::DOMAIN_SLUG.to_string(),
+            name: app::DOMAIN_NAME.to_string(),
+            url: format!("{}/", *common::FRONTEND_URL),
+            oidc: Some(ApplicationOidc {
+                redirect_uris: vec![format!("{}/", *common::FRONTEND_URL)],
+                public: true,
+            }),
+        },
+        pg,
+    )
+    .await
+    {
+        Ok(_) => {}
+        Err(ApplicationCreateError::AppNameInUse { .. }) => return Ok(()),
+        Err(ApplicationCreateError::SlugInUse { .. }) => return Ok(()),
+        Err(failure) => {
+            return Err(InternalError!(
+                ctx(failure),
+                "Creating internal application failed"
+            ));
+        }
+    }
+
+    let invite = invite::create_impl(
+        common::INITIAL_ADMIN_EMAIL.clone(),
+        vec![Membership {
+            slug: app::DOMAIN_SLUG.to_string(),
+            admin: true,
+        }],
+        Utc::now() + TimeDelta::weeks(1),
+        pg,
+    )
+    .await
+    .context(InternalSnafu)?;
+
+    info!(
+        email = invite.email,
+        id = hex::encode(invite.id),
+        "Initial admin invite sent"
+    );
+
     Ok(())
 }
 

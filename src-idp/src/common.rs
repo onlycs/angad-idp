@@ -41,7 +41,14 @@ fn parse_email_str(s: impl AsRef<str>) -> Result<String, InternalError> {
 }
 
 fn url_normalize(s: impl AsRef<str>) -> Result<String, InternalError> {
-    Ok(s.as_ref().trim_end_matches("/").to_string())
+    let s = s.as_ref();
+
+    snafu::ensure!(
+        URL_RE.is_match(s),
+        InternalError!(ctx(none), "`{s}` is not a URL")
+    );
+
+    Ok(s.trim_end_matches("/").to_string())
 }
 
 macro_rules! static_env {

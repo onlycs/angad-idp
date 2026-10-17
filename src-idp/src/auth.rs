@@ -1,12 +1,11 @@
 use idp_proto::{
-    app::Membership,
     auth::{AccessLevel, Authentication, AuthenticationStrict},
     error::Denied,
 };
 use sqlx::PgPool;
 use transit_core::InternalError;
 
-use crate::{common, token, user};
+use crate::{app, common, token, user};
 
 async fn authenticate_integration(
     key: String,
@@ -65,7 +64,10 @@ pub(crate) async fn authenticate(
             };
 
             if perms.updated_at > token.issued
-                || token.memberships.iter().any(Membership::is_domain_admin)
+                || token
+                    .memberships
+                    .iter()
+                    .any(|ship| ship.slug == app::DOMAIN_SLUG && ship.admin)
             {
                 return Ok(Err(Denied));
             }

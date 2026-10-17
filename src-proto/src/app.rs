@@ -32,16 +32,9 @@ pub struct Membership {
     pub admin: bool,
 }
 
-impl Membership {
-    pub fn is_domain_admin(&self) -> bool {
-        self.slug == DOMAIN_SLUG && self.admin
-    }
-}
-
 #[record]
 pub struct ApplicationOidc {
     pub redirect_uris: Vec<String>,
-    pub match_url: String,
     pub public: bool,
 }
 
@@ -80,7 +73,6 @@ pub enum ApplicationOidcUpdate {
     Create(ApplicationOidc),
     Modify {
         redirect_uris: Option<Vec<String>>,
-        match_url: Option<String>,
         public: ApplicationPublicUpdate,
     },
     Remove,

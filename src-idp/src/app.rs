@@ -15,6 +15,9 @@ use crate::{
     common::{self, NAME_RE, SLUG_RE, URI_RE, URL_RE},
 };
 
+pub(crate) const DOMAIN_NAME: &str = "Angad IdP";
+pub(crate) use idp_proto::app::DOMAIN_SLUG;
+
 pub(crate) async fn verify(
     slugs: &[String],
     pg: &PgPool,
@@ -51,16 +54,13 @@ pub(crate) fn split_roles(memberships: &Vec<Membership>) -> (Vec<String>, Vec<bo
         .unzip::<_, _, Vec<_>, Vec<_>>()
 }
 
-#[tracing::instrument(skip(pg))]
-pub(crate) async fn create(
-    ApplicationCreateRequest { auth, app }: ApplicationCreateRequest,
-    pg: Arc<PgPool>,
+pub(crate) async fn create_impl(
+    app: Application,
+    pg: &PgPool,
 ) -> Result<ApplicationCreateResponse, ApplicationCreateError> {
     let mut res = ApplicationCreateResponse {
         client_secret: None,
     };
-
-    auth::authenticate(auth, AccessLevel::ReadWrite, &pg).await??;
 
     snafu::ensure!(SLUG_RE.is_match(&app.slug), InvalidSlug);
     snafu::ensure!(NAME_RE.is_match(&app.name), InvalidAppName);
@@ -109,12 +109,11 @@ pub(crate) async fn create(
 
         sqlx::query!(
             r#"
-            INSERT INTO applications_oidc (slug, client_secret_hash, match_url, redirect_uris)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO applications_oidc (slug, client_secret_hash, redirect_uris)
+            VALUES ($1, $2, $3)
             "#,
             app.slug,
             hash,
-            oidc.match_url,
             oidc.redirect_uris.as_slice(),
         )
         .execute(&mut *tx)
@@ -132,6 +131,15 @@ pub(crate) async fn create(
 }
 
 #[tracing::instrument(skip(pg))]
+pub(crate) async fn create(
+    ApplicationCreateRequest { auth, app }: ApplicationCreateRequest,
+    pg: Arc<PgPool>,
+) -> Result<ApplicationCreateResponse, ApplicationCreateError> {
+    auth::authenticate(auth, AccessLevel::ReadWrite, &pg).await??;
+    create_impl(app, &pg).await
+}
+
+#[tracing::instrument(skip(pg))]
 pub(crate) async fn list(
     auth: Authentication,
     pg: Arc<PgPool>,
@@ -145,7 +153,6 @@ pub(crate) async fn list(
             a.name,
             a.url,
             o.redirect_uris,
-            o.match_url,
             o.client_secret_hash IS NULL AS public
         FROM applications a
         LEFT JOIN applications_oidc o
@@ -162,14 +169,12 @@ pub(crate) async fn list(
             slug: a.slug,
             name: a.name,
             url: a.url,
-            oidc: a.redirect_uris.zip(a.public).zip_with(
-                a.match_url,
-                |(uris, public), match_url| ApplicationOidc {
+            oidc: a
+                .redirect_uris
+                .zip_with(a.public, |uris, public| ApplicationOidc {
                     redirect_uris: uris,
                     public,
-                    match_url,
-                },
-            ),
+                }),
         })
         .collect())
 }
@@ -195,7 +200,7 @@ pub(crate) async fn update(
     let mut res_oidc = sqlx::query_as!(
         ApplicationOidc,
         r#"
-        SELECT redirect_uris, match_url, client_secret_hash IS NULL as "public!: bool"
+        SELECT redirect_uris, client_secret_hash IS NULL as "public!: bool"
         FROM applications_oidc
         WHERE slug = $1
         "#,
@@ -229,11 +234,10 @@ pub(crate) async fn update(
 
             sqlx::query!(
                 r#"
-                INSERT INTO applications_oidc (slug, match_url, client_secret_hash, redirect_uris)
-                VALUES ($1, $2, $3, $4)
+                INSERT INTO applications_oidc (slug, client_secret_hash, redirect_uris)
+                VALUES ($1, $2, $3)
                 "#,
                 slug,
-                oidc.match_url,
                 hash,
                 oidc.redirect_uris.as_slice()
             )
@@ -246,7 +250,6 @@ pub(crate) async fn update(
 
         ApplicationOidcUpdate::Modify {
             redirect_uris,
-            match_url,
             mut public,
         } => {
             let Some(res_oidc) = res_oidc.as_mut() else {
@@ -283,14 +286,12 @@ pub(crate) async fn update(
                 r#"
                 UPDATE applications_oidc
                 SET
-                    match_url = COALESCE($2, match_url),
-                    redirect_uris = COALESCE($3, redirect_uris),
-                    client_secret_hash = $4
+                    redirect_uris = COALESCE($2, redirect_uris),
+                    client_secret_hash = $3
                 WHERE
                     slug = $1
                 "#,
                 slug,
-                match_url,
                 redirect_uris.as_ref().map(|x| x.as_slice()),
                 hash
             )
@@ -304,10 +305,6 @@ pub(crate) async fn update(
 
             if let Some(it) = redirect_uris {
                 res_oidc.redirect_uris = it;
-            }
-
-            if let Some(it) = match_url {
-                res_oidc.match_url = it;
             }
         }
 
