@@ -80,4 +80,7 @@ build: api wasm ldap
 	@echo "=== Building frontend"
 	bun generate
 
+precommit:
+	cd src-idp && cargo sqlx prepare
+
 postinstall: wasm fmt
