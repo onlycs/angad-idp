@@ -25,4 +25,3 @@ vite.config.ts.timestamp-*
 .direnv
 .postgres
 **/target
-app/style/palette.css

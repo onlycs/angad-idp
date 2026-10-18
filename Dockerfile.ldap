@@ -1,0 +1,51 @@
+ARG RUST_VERSION=2026-09-29
+ARG GO_VERSION=1
+
+# 1 -- Proto
+FROM rustlang/rust:nightly-bookworm-${RUST_VERSION} AS proto
+
+ARG UNIFFI_BINDGEN_GO_REV=4ca1c42eca9ebd43e257d89ade70a7b1d73d92ae
+RUN cargo install uniffi-bindgen-go --locked \
+    --git https://codeberg.org/tendulkar/uniffi-bindgen-go \
+    --rev ${UNIFFI_BINDGEN_GO_REV}
+
+RUN cargo install sccache --locked
+ENV RUSTC_WRAPPER=sccache SCCACHE_DIR=/sccache
+
+WORKDIR /src/src-proto
+COPY src-proto .
+COPY src-ldap/uniffi.toml /src/src-ldap/uniffi.toml
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/app/target \
+    --mount=type=cache,target=/sccache \
+    cargo build --release --features client,uniffi
+
+RUN uniffi-bindgen-go target/release/libidp_proto.so \
+    -o /bindings -c /src/src-ldap/uniffi.toml
+
+# 2 -- Go
+FROM golang:${GO_VERSION}-bookworm AS build
+
+WORKDIR /src/src-ldap
+COPY src-ldap .
+RUN find transit -mindepth 1 -maxdepth 1 ! -name go.mod ! -name .gitignore -exec rm -rf -- {} + && rm -rf out
+COPY --from=proto /bindings/ transit/
+COPY --from=proto /src/src-proto/target/release/libidp_proto.a /usr/local/lib/libidp_proto.a
+
+RUN go mod tidy
+RUN CGO_ENABLED=1 \
+    CGO_LDFLAGS="/usr/local/lib/libidp_proto.a -lm -ldl -lpthread" \
+    go build -o /out/idp-ldap .
+
+# 3 -- Runtime
+FROM debian:bookworm-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /out/idp-ldap /usr/local/bin/idp-ldap
+
+EXPOSE 389
+ENTRYPOINT ["/usr/local/bin/idp-ldap"]

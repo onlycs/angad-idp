@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO roles (uid, application, admin)\n            SELECT $1, app, admin\n            FROM UNNEST($2::text[], $3::boolean[]) AS t(app, admin)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "TextArray",
+        "BoolArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3362b4d094e423358a20d55e543d77b34cada5ecbf85c1d398c88b546a20d7c2"
+}

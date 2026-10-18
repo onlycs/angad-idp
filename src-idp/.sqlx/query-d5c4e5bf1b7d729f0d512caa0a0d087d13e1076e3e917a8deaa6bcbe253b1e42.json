@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT read_only FROM integrations WHERE key_hash = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "read_only",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "integrations",
+            "name": "read_only"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "d5c4e5bf1b7d729f0d512caa0a0d087d13e1076e3e917a8deaa6bcbe253b1e42"
+}

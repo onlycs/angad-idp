@@ -1,0 +1,57 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            i.key_hash,\n            i.email,\n            i.expiry,\n            COALESCE(\n                JSONB_AGG(\n                    JSONB_BUILD_OBJECT(\n                        'slug', r.application,\n                        'admin', r.admin\n                    )\n                ),\n                '[]'::jsonb\n            ) AS \"roles!: sqlx::types::Json<Vec<Membership>>\"\n        FROM invites i\n        LEFT JOIN invite_roles r ON r.invite = i.key_hash\n        GROUP BY i.key_hash;\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "key_hash",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "invites",
+            "name": "key_hash"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "email",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "invites",
+            "name": "email"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "expiry",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "invites",
+            "name": "expiry"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "roles!: sqlx::types::Json<Vec<Membership>>",
+        "type_info": "Jsonb",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "59f160b83c46a495278003a6106b1858747e593fe599ca0490acb5b11fa8389e"
+}

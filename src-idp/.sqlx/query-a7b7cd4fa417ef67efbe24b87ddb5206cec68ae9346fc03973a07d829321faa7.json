@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            DELETE FROM invite_roles\n            WHERE invite = $1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a7b7cd4fa417ef67efbe24b87ddb5206cec68ae9346fc03973a07d829321faa7"
+}

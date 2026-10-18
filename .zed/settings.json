@@ -25,12 +25,12 @@
         "SQL": {
             "tab_size": 4,
         },
-        "Proto": {
+        "Docker Compose": {
             "tab_size": 2,
         },
-        "Apache Avro (IDL)": {
-            "tab_size": 2,
-        },
+    },
+    "file_types": {
+        "Dockerfile": ["Dockerfile", "Dockerfile.*"],
     },
     "lsp": {
         "tailwindcss-language-server": {

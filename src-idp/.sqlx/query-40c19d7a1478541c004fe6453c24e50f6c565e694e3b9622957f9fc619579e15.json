@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO invite_roles (invite, application, admin)\n        SELECT $1, app, admin\n        FROM UNNEST($2::text[], $3::boolean[]) AS t(app, admin)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "TextArray",
+        "BoolArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "40c19d7a1478541c004fe6453c24e50f6c565e694e3b9622957f9fc619579e15"
+}

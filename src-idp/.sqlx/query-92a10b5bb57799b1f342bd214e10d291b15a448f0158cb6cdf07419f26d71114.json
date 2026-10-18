@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO integrations (id, name, key_hash, read_only)\n        VALUES ($1, $2, $3, $4)\n        ON CONFLICT DO NOTHING\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Bytea",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "92a10b5bb57799b1f342bd214e10d291b15a448f0158cb6cdf07419f26d71114"
+}

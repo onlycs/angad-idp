@@ -1,0 +1,45 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            a.slug,\n            a.name,\n            COALESCE(\n                JSONB_AGG(\n                    JSONB_BUILD_OBJECT(\n                        'redirect_uris', o.redirect_uris,\n                        'client_secret_hash', o.client_secret_hash\n                    )\n                ),\n                '{}'::jsonb\n            ) AS \"oidc: Json<ApplicationOidc>\"\n        FROM applications a\n        LEFT JOIN applications_oidc o ON o.slug = a.slug\n        GROUP BY a.slug, a.name;\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "slug",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "applications",
+            "name": "slug"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "applications",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "oidc: Json<ApplicationOidc>",
+        "type_info": "Jsonb",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "5e41ccf1675ba54d198de3c8ebda008a186437361305fed6e6179cbc055b3f6f"
+}

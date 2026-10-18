@@ -1,0 +1,23 @@
+ARG RUST_VERSION=2026-09-29
+
+# Build
+FROM rustlang/rust:nightly-bookworm-${RUST_VERSION} AS build
+
+RUN cargo install sccache --locked
+ENV RUSTC_WRAPPER=sccache SCCACHE_DIR=/sccache
+
+WORKDIR /src
+COPY src-idp src-idp
+COPY src-proto src-proto
+COPY thirdparty thirdparty
+
+WORKDIR /src/src-idp
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/app/target \
+    --mount=type=cache,target=/sccache \
+    cargo build --release && cp target/release/idp-server /idp-server
+
+# Runtime
+FROM debian:bookworm-slim
+COPY --from=build /idp-server /usr/local/bin/idp-server
+CMD ["/usr/local/bin/idp-server"]

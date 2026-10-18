@@ -1,7 +1,7 @@
 SHELL := bash
 
 .PHONY: help
-.PHONY: transit transit-wasm transit-native
+.PHONY: proto proto-wasm proto-native
 .PHONY: ldap wasm api
 .PHONY: fmt postinstall
 
@@ -9,25 +9,34 @@ help:
 	@echo "Usage: make [target]"
 	@echo "Targets:"
 	@echo "  help           - Show this help message"
-	@echo "  transit        - Build transit for wasm32 and native"
-	@echo "  transit-wasm   - Build transit for wasm32"
-	@echo "  transit-native - Build transit for native"
 	@echo "  ldap           - Build the go ldap binary"
 	@echo "  wasm           - Build WASM package and generate bindings"
 	@echo "  api            - Build API"
 	@echo "  fmt            - Format everything"
 
-proto-wasm:
-	@echo "=== Building proto for wasm32"
-	cd src-proto && cargo build --release --features client --target wasm32-unknown-unknown
+define RUST_SRC
+$(shell find $(1)/src -type f -name '*.rs') \
+$(1)/Cargo.toml \
+$(1)/Cargo.lock
+endef
 
-proto-native:
+define GO_SRC
+$(shell find $(1)/ -type f -name '*.go') \
+$(1)/go.mod \
+$(1)/go.sum
+endef
+
+proto-wasm: $(call RUST_SRC,src-proto)
+	@echo "=== Building proto for wasm32"
+	cd src-proto && cargo build --release --features client,tokio --target wasm32-unknown-unknown
+
+proto-native: $(call RUST_SRC,src-proto)
 	@echo "=== Building proto for native"
 	cd src-proto && cargo build --release --features client,uniffi
 
 proto: proto-wasm proto-native
 
-ldap: proto-native
+ldap: $(call GO_SRC,src-ldap)
 	@echo "=== Cleaning bindings"
 	find src-ldap/transit -mindepth 1 -maxdepth 1 ! -name 'go.mod' ! -name '.gitignore' -exec rm -rf -- {} +
 	@echo "=== Generating bindings"
@@ -39,7 +48,7 @@ ldap: proto-native
     	CGO_ENABLED=1 \
 		go build -o out/idp-ldap
 
-wasm:
+wasm: $(call RUST_SRC,src-proto)
 	@echo "=== Building WASM package"
 	cd src-proto && rm -rf pkg && wasm-pack build --target web --release --out-name libidp --features client,tokio
 	@echo "=== Copying package files"
@@ -53,7 +62,7 @@ thirdparty/sqlx:
 	cd thirdparty/sqlx && git checkout v0.9.0
 	cd thirdparty/sqlx && cat ../sqlx-join-type-inference.patch | git am -3 --no-gpg-sign
 
-api: thirdparty/sqlx
+api: thirdparty/sqlx $(call RUST_SRC,src-idp)
 	@echo "=== Building the API"
 	cd src-idp && cargo build --release
 
