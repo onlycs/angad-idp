@@ -24,7 +24,7 @@ authentication_backend:
     group_search_mode: filter
     permit_referrals: false
     user: "cn=$service,ou=users,dc=angad,dc=page"
-    # todo: password: via env
+    password: "{{ integration_key }}"
     attributes:
       username: "cn"
       mail: "mail"

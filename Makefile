@@ -36,7 +36,7 @@ proto-native: $(call RUST_SRC,src-proto)
 
 proto: proto-wasm proto-native
 
-ldap: $(call GO_SRC,src-ldap)
+ldap: $(call GO_SRC,src-ldap) proto-native
 	@echo "=== Cleaning bindings"
 	find src-ldap/transit -mindepth 1 -maxdepth 1 ! -name 'go.mod' ! -name '.gitignore' -exec rm -rf -- {} +
 	@echo "=== Generating bindings"

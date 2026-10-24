@@ -57,6 +57,7 @@
                 "cargo": {
                     "allFeatures": true,
                     // "target": "wasm32-unknown-unknown"
+                    // "features": ["docker"],
                 },
             },
         },

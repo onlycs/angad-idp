@@ -11,6 +11,8 @@ import (
 )
 
 func Bind(w ldapserver.ResponseWriter, m *ldapserver.Message) {
+	clearSession(m)
+
 	r := m.GetBindRequest()
 	res := ldapserver.NewBindResponse(ldapserver.LDAPResultOperationsError)
 
@@ -32,10 +34,17 @@ func Bind(w ldapserver.ResponseWriter, m *ldapserver.Message) {
 	name := string(dn.RDNs[0].Attributes[0].Value)
 
 	if name == "$service" {
-		if r.AuthenticationSimple().String() == Integration {
+		pass := r.AuthenticationSimple().String()
+		res_err := proto.RouteIntegrationAuthorize(Api, proto.IntegrationAuthorizeRequest{
+			Key:   pass,
+			Level: proto.AccessLevelReadWrite,
+		})
+
+		if res_err == nil {
+			setSession(m, &session{password: pass})
 			res.SetResultCode(ldapserver.LDAPResultSuccess)
 		} else {
-			res.SetResultCode(ldapserver.LDAPResultOperationsError)
+			res.SetResultCode(ldapserver.LDAPResultInvalidCredentials)
 		}
 
 		w.Write(res)

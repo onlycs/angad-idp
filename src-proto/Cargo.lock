@@ -2109,6 +2109,7 @@ dependencies = [
 [[package]]
 name = "transit-core"
 version = "0.1.0"
+source = "git+https://codeberg.org/tendulkar/transit#80da1ac2a8d07c353eb6c7537d92fc804e4996ac"
 dependencies = [
  "async-executor",
  "async-io",
@@ -2148,6 +2149,7 @@ dependencies = [
 [[package]]
 name = "transit-macros"
 version = "0.1.0"
+source = "git+https://codeberg.org/tendulkar/transit#80da1ac2a8d07c353eb6c7537d92fc804e4996ac"
 dependencies = [
  "heck",
  "itertools",

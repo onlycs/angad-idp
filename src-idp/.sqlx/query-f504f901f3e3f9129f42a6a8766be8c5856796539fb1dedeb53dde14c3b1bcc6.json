@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT id, name, read_only\n        FROM integrations\n        ",
+  "query": "\n        SELECT id, name, read_only\n        FROM integrations\n        WHERE id != $1\n        ",
   "describe": {
     "columns": [
       {
@@ -38,7 +38,9 @@
       }
     ],
     "parameters": {
-      "Left": []
+      "Left": [
+        "Text"
+      ]
     },
     "nullable": [
       false,
@@ -46,5 +48,5 @@
       false
     ]
   },
-  "hash": "dcf1f985cdc49e0065f8c689c2061281695d96a67a41e7f27fc8d30fef48ecff"
+  "hash": "f504f901f3e3f9129f42a6a8766be8c5856796539fb1dedeb53dde14c3b1bcc6"
 }

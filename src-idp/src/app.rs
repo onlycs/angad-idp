@@ -13,7 +13,7 @@ use transit_core::{InternalError, InternalErrorContext, error};
 use crate::{
     auth::{self, AuthErrorCast},
     authelia,
-    common::{self, NAME_RE, SLUG_RE, URI_RE, URL_RE},
+    common::{self, SLUG_RE, URI_RE, URL_RE},
 };
 
 pub(crate) const DOMAIN_NAME: &str = "Angad IdP";
@@ -57,19 +57,25 @@ pub(crate) fn split_roles(memberships: &Vec<Membership>) -> (Vec<String>, Vec<bo
 }
 
 pub(crate) async fn create_impl(
-    app: Application,
+    Application {
+        slug,
+        name,
+        url,
+        oidc,
+    }: Application,
     pg: &PgPool,
 ) -> Result<ApplicationCreateResponse, ApplicationCreateError> {
     let mut res = ApplicationCreateResponse {
         client_secret: None,
     };
 
-    snafu::ensure!(SLUG_RE.is_match(&app.slug), InvalidSlug);
-    snafu::ensure!(NAME_RE.is_match(&app.name), InvalidAppName);
-    snafu::ensure!(URL_RE.is_match(&app.url), InvalidUrl);
+    let name = name.trim();
 
-    if let Some(uri) = app
-        .oidc
+    snafu::ensure!(SLUG_RE.is_match(&slug), InvalidSlug);
+    snafu::ensure!(!name.is_empty(), InvalidAppName);
+    snafu::ensure!(URL_RE.is_match(&url), InvalidUrl);
+
+    if let Some(uri) = oidc
         .as_ref()
         .and_then(|oidc| oidc.redirect_uris.iter().find(|uri| !URI_RE.is_match(uri)))
     {
@@ -90,9 +96,9 @@ pub(crate) async fn create_impl(
         VALUES ($1, $2, $3)
         ON CONFLICT DO NOTHING
         "#,
-        app.slug,
-        app.name,
-        app.url,
+        slug,
+        name,
+        url,
     )
     .execute(&mut *tx)
     .await
@@ -102,7 +108,7 @@ pub(crate) async fn create_impl(
         return Err(SlugInUse.into());
     }
 
-    if let Some(oidc) = app.oidc {
+    if let Some(oidc) = oidc {
         let client_secret = hex::encode(common::generate_secret()?);
         let hash = common::argon2()
             .hash_password(client_secret.as_bytes())
@@ -114,7 +120,7 @@ pub(crate) async fn create_impl(
             INSERT INTO applications_oidc (slug, client_secret_hash, redirect_uris)
             VALUES ($1, $2, $3)
             "#,
-            app.slug,
+            slug,
             hash,
             oidc.redirect_uris.as_slice(),
         )
@@ -202,6 +208,10 @@ pub(crate) async fn update(
     auth::authenticate(auth, AccessLevel::ReadWrite, &pg)
         .await
         .context(AuthErrorCast::<ApplicationUpdateError>)?;
+
+    let name = name.as_ref().map(|name| name.trim());
+    snafu::ensure!(name.is_none_or(|n| !n.is_empty()), InvalidAppName);
+    snafu::ensure!(url.as_ref().is_none_or(|u| URL_RE.is_match(u)), InvalidUrl);
 
     let mut tx = pg
         .begin()

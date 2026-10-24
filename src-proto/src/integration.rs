@@ -5,6 +5,9 @@ use crate::{
     error::Denied,
 };
 
+pub const INTERNAL_INTEGRATION_ID: &str = "a00000000000000000000000";
+pub const INTERNAL_INTEGRATION_NAME: &str = "$internal";
+
 #[record]
 pub struct Integration {
     pub id: String,
@@ -23,6 +26,12 @@ pub struct IntegrationCreateRequest {
 pub struct IntegrationCreateResponse {
     pub id: String,
     pub key: String,
+}
+
+#[record]
+pub struct IntegrationAuthorizeRequest {
+    pub key: String,
+    pub level: AccessLevel,
 }
 
 #[record]
@@ -55,6 +64,7 @@ error! {
 
     IntegrationCreateError = InvalidIntegrationName | IntegrationNameInUse | Denied;
     IntegrationListError = Denied;
+    IntegrationAuthorizeError = Denied;
     IntegrationUpdateError = NoIntegration | InvalidIntegrationName | IntegrationNameInUse | Denied;
     IntegrationDeleteError = NoIntegration | Denied;
 }
@@ -62,6 +72,7 @@ error! {
 route! {
     IntegrationCreate(IntegrationCreateRequest) -> Result<IntegrationCreateResponse, IntegrationCreateError>;
     IntegrationList(Authentication) -> Result<Vec<Integration>, IntegrationListError>;
+    IntegrationAuthorize(IntegrationAuthorizeRequest) -> Result<(), IntegrationAuthorizeError>;
     IntegrationUpdate(IntegrationUpdateRequest) -> Result<IntegrationUpdateResponse, IntegrationUpdateError>;
     IntegrationDelete(IntegrationDeleteRequest) -> Result<(), IntegrationDeleteError>;
 }

@@ -17,6 +17,12 @@ func Search(w ldapserver.ResponseWriter, m *ldapserver.Message) {
 	res := ldapserver.NewSearchResultDoneResponse(ldap.LDAPResultSuccess)
 	defer func() { w.Write(res) }()
 
+	sess, ok := getSession(m)
+	if !ok {
+		res = ldapserver.NewSearchResultDoneResponse(ldapserver.LDAPResultInsufficientAccessRights)
+		return
+	}
+
 	dn, err := ldap.ParseDN(string(req.BaseObject()))
 	if err != nil {
 		res.SetResultCode(ldapserver.LDAPResultInvalidDNSyntax)
@@ -102,7 +108,7 @@ func Search(w ldapserver.ResponseWriter, m *ldapserver.Message) {
 	}
 
 	users, eusers := proto.RouteUserList(Api, proto.AuthenticationIntegration{
-		Field0: Integration,
+		Field0: sess.password,
 	})
 
 	if _, handle, ret := HandleError[

@@ -1,5 +1,7 @@
-#![feature(option_zip, error_generic_member_access)]
+#![feature(option_zip, error_generic_member_access, path_trailing_sep)]
 #![allow(unexpected_cfgs)]
+
+use std::sync::Arc;
 
 use chrono::{TimeDelta, Utc};
 use idp_proto::{
@@ -7,7 +9,10 @@ use idp_proto::{
         Application, ApplicationCreate, ApplicationCreateError, ApplicationDelete, ApplicationList,
         ApplicationOidc, ApplicationUpdate, Membership,
     },
-    integration::{IntegrationCreate, IntegrationDelete, IntegrationList, IntegrationUpdate},
+    integration::{
+        IntegrationAuthorize, IntegrationCreate, IntegrationDelete, IntegrationList,
+        IntegrationUpdate,
+    },
     invite::{InviteCreate, InviteCreateError, InviteDelete, InviteList, InviteUpdate, InviteUse},
     user::{CheckPassword, UpdatePassword, UserDelete, UserList, UserUpdate},
 };
@@ -15,7 +20,8 @@ use snafu::{Location, ResultExt, Snafu};
 use sqlx::PgPool;
 use tracing::info;
 use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::SubscriberInitExt};
-use transit_core::server::{self, Router, TcpListenOptions};
+use transit_core::server::{self, Router, TcpListenOptions, XwtListenOptions};
+use wtransport::Identity;
 
 mod app;
 mod auth;
@@ -126,7 +132,7 @@ async fn setup_domain(pg: &PgPool) -> Result<(), DomainSetupError> {
 
     info!(
         email = invite.email,
-        id = hex::encode(invite.id),
+        id = invite.id,
         "Initial admin invite sent"
     );
 
@@ -156,6 +162,7 @@ async fn main() -> Result<(), StartupError> {
         // Integration CRUD
         .route::<IntegrationCreate, _>(integration::create)
         .route::<IntegrationList, _>(integration::list)
+        .route::<IntegrationAuthorize, _>(integration::authorize)
         .route::<IntegrationUpdate, _>(integration::update)
         .route::<IntegrationDelete, _>(integration::delete)
         // Invite CRUD
@@ -172,16 +179,28 @@ async fn main() -> Result<(), StartupError> {
         .route::<UserDelete, _>(user::delete)
         .build();
 
-    server::listen_tcp_tls(
+    let tcp = tokio::spawn(server::listen_tcp_tls(
         TcpListenOptions {
-            addr: "0.0.0.0",
-            port: 23849,
+            addr: &*common::LISTEN_ADDRESS,
+            port: *common::TRANSIT_PORT,
             tls: None,
         },
+        Arc::clone(&router),
+    ));
+
+    let xwt = tokio::spawn(server::listen_xwt(
+        XwtListenOptions {
+            addr: &*common::LISTEN_ADDRESS,
+            port: *common::WT_PORT,
+            path: common::WT_PATH.clone(),
+            tls: Identity::self_signed(["localhost", "127.0.0.1"]).expect("Invalid SAN"),
+        },
         router,
-    )
-    .await
-    .context(ListenSnafu)?;
+    ));
+
+    let (left, right) = tokio::join!(tcp, xwt);
+    left.unwrap().unwrap();
+    right.unwrap().unwrap();
 
     Ok(())
 }

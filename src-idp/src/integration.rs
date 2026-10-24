@@ -10,21 +10,18 @@ use transit_core::{InternalError, InternalErrorContext};
 
 use crate::{
     auth::{self, AuthErrorCast},
-    common::{self, NAME_RE},
+    common::{self},
 };
 
-#[tracing::instrument(skip(pg))]
-pub(crate) async fn create(
-    IntegrationCreateRequest { auth, name, access }: IntegrationCreateRequest,
-    pg: Arc<PgPool>,
+pub(crate) async fn create_impl(
+    id: String,
+    name: String,
+    access: AccessLevel,
+    pg: &PgPool,
 ) -> Result<IntegrationCreateResponse, IntegrationCreateError> {
-    auth::authenticate(auth, AccessLevel::ReadWrite, &pg)
-        .await
-        .context(AuthErrorCast::<IntegrationCreateError>)?;
+    let name = name.trim();
+    snafu::ensure!(!name.is_empty(), InvalidIntegrationName);
 
-    snafu::ensure!(NAME_RE.is_match(&name), InvalidIntegrationName);
-
-    let id = cuid2::cuid();
     let key = hex::encode(common::generate_secret()?);
     let hash = common::sha256(key.as_bytes());
 
@@ -39,13 +36,25 @@ pub(crate) async fn create(
         hash,
         access == AccessLevel::Read,
     )
-    .execute(&*pg)
+    .execute(pg)
     .await
     .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
     snafu::ensure!(result.rows_affected() > 0, IntegrationNameInUse);
 
     Ok(IntegrationCreateResponse { id, key })
+}
+
+#[tracing::instrument(skip(pg))]
+pub(crate) async fn create(
+    IntegrationCreateRequest { auth, name, access }: IntegrationCreateRequest,
+    pg: Arc<PgPool>,
+) -> Result<IntegrationCreateResponse, IntegrationCreateError> {
+    auth::authenticate(auth, AccessLevel::ReadWrite, &pg)
+        .await
+        .context(AuthErrorCast::<IntegrationCreateError>)?;
+
+    create_impl(cuid2::cuid(), name, access, &pg).await
 }
 
 #[tracing::instrument(skip(pg))]
@@ -61,7 +70,9 @@ pub(crate) async fn list(
         r#"
         SELECT id, name, read_only
         FROM integrations
+        WHERE id != $1
         "#,
+        INTERNAL_INTEGRATION_ID
     )
     .fetch_all(&*pg)
     .await
@@ -81,6 +92,18 @@ pub(crate) async fn list(
         .collect())
 }
 
+#[tracing::instrument(skip(pg))]
+pub(crate) async fn authorize(
+    IntegrationAuthorizeRequest { key, level }: IntegrationAuthorizeRequest,
+    pg: Arc<PgPool>,
+) -> Result<(), IntegrationAuthorizeError> {
+    auth::authenticate(Authentication::Integration(key), level, &pg)
+        .await
+        .context(AuthErrorCast::<IntegrationAuthorizeError>)?;
+
+    Ok(())
+}
+
 #[tracing::instrument(skip(pg, auth))]
 pub(crate) async fn update(
     IntegrationUpdateRequest {
@@ -95,10 +118,11 @@ pub(crate) async fn update(
     auth::authenticate(auth, AccessLevel::ReadWrite, &pg)
         .await
         .context(AuthErrorCast::<IntegrationUpdateError>)?;
-    snafu::ensure!(
-        name.as_ref().is_none_or(|n| common::NAME_RE.is_match(n)),
-        InvalidIntegrationName
-    );
+
+    let name = name.as_ref().map(|n| n.trim());
+
+    snafu::ensure!(id != INTERNAL_INTEGRATION_ID, NoIntegration);
+    snafu::ensure!(name.is_none_or(|n| !n.is_empty()), InvalidIntegrationName);
 
     let key = if roll_key {
         Some(hex::encode(common::generate_secret()?))
@@ -157,6 +181,8 @@ pub(crate) async fn delete(
     auth::authenticate(auth, AccessLevel::ReadWrite, &pg)
         .await
         .context(AuthErrorCast::<IntegrationDeleteError>)?;
+
+    snafu::ensure!(id != INTERNAL_INTEGRATION_ID, NoIntegration);
 
     let res = sqlx::query!(
         r#"

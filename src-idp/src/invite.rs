@@ -104,7 +104,10 @@ pub(crate) async fn create_impl(
 
     let message = Message::builder()
         .from(Mailbox::new(None, common::SMTP_FROM.clone()))
-        .to(Mailbox::new(None, common::parse_email(&email)?))
+        .to(Mailbox::new(
+            None,
+            common::parse_email(&email).context(TransitErrorContext!(InvalidEmail))?,
+        ))
         .subject("Invitiation to Angad Auth")
         .header(ContentType::TEXT_HTML)
         .body(

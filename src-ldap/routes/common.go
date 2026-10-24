@@ -15,25 +15,42 @@ import (
 )
 
 var Api *transit.Transit = nil
-var Integration = os.Getenv("INTEGRATION_KEY")
 
 const INTEGRATION_INVALID = "Permission denied, is INTEGRATION_KEY valid?"
 
+func EnvOrDefault(key string, value string) string {
+	a, exists := os.LookupEnv(key)
+	if !exists {
+		return value
+	}
+	return a
+}
+
+func EnvOrThrow(key string) string {
+	a, exists := os.LookupEnv(key)
+	if !exists {
+		panic(fmt.Sprint("Missing `", key, "`"))
+	}
+
+	return a
+}
+
 func Setup() {
-	transit_addr := os.Getenv("TRANSIT_ADDRESS")
-	env_transit_port := os.Getenv("TRANSIT_PORT")
+	transit_addr := EnvOrThrow("TRANSIT_ADDRESS")
+	env_transit_port := EnvOrThrow("TRANSIT_PORT")
+
 	transit_port, conv_err := strconv.Atoi(env_transit_port)
 
 	if conv_err != nil {
 		panic(conv_err)
 	}
 
-	var tls transit.Tls = transit.TlsInternal{}
+	// var tls transit.Tls = transit.TlsInternal{}
 	l_api, transit_err := transit.Connect(transit.TransitOptions{
 		Connect: transit.ConnectOptions{
 			Addr: transit_addr,
 			Port: uint16(transit_port),
-			Crt:  &tls,
+			Crt:  nil,
 		},
 	})
 

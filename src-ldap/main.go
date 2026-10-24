@@ -12,6 +12,9 @@ import (
 )
 
 func main() {
+	listen_addr := routes.EnvOrDefault("LISTEN_ADDRESS", "0.0.0.0")
+	listen_port := routes.EnvOrDefault("LISTEN_PORT", "389")
+
 	transit.BeginLogging(transit.LogLevelInfo)
 	ldap.Logger = log.New(os.Stdout, "[server] ", log.LstdFlags)
 
@@ -23,7 +26,7 @@ func main() {
 	router.Search(routes.Search)
 
 	server.Handle(router)
-	go server.ListenAndServe("127.0.0.1:10389")
+	go server.ListenAndServe(listen_addr + ":" + listen_port)
 
 	ch := make(chan os.Signal, 8)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
