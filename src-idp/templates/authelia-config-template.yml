@@ -32,14 +32,7 @@ authentication_backend:
       member_of: "memberOf"
 totp:
   disable: false
-  issuer: "auth.angad.page"
-  apps:
-    apple_store:
-      disable: false
-      url: "https://apps.apple.com/us/app/google-authenticator/id388497605"
-    google_play:
-      disable: false
-      url: "https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2"
+  issuer: "Angad Auth"
 webauthn:
   disable: false
   enable_passkey_login: true
@@ -51,33 +44,27 @@ regulation:
   max_retries: 5
   find_time: 2m
   ban_time: 5m
+access_control:
+  default_policy: two_factor
 password_policy:
   zxcvbn:
     enabled: true
     min_score: 3
 session:
-  # todo: secret: via env
   cookies:
     - domain: "{{ &*AUTHELIA_DOMAIN }}"
       authelia_url: "https://{{ &*AUTHELIA_DOMAIN }}"
   redis:
-    # todo: host, port: via env
     tls:
       skip_verify: true # in-cluster, therefore idgaf sue me.
 storage:
-  # todo: encryption_key: via env
   postgres:
-    # todo: address: via env (use tcp://addr:port instead of postgres://)
-    # todo: database, username, password: via env
     schema: public
     tls:
       skip_verify: true # again, in-cluster
 notifier:
   disable_startup_check: false
   smtp:
-    # todo: address: via env (use smtp://addr:port)
-    # todo: username, password: via env
-    # todo: sender: via env (use '"Name" <email>')
     identifier: "{{ &*AUTHELIA_DOMAIN }}"
     subject: "[Angad Auth] {title}"
 telemetry:
@@ -85,8 +72,13 @@ telemetry:
     enabled: false # todo: long-term: LOKI
 identity_providers:
   oidc:
-    # todo: hmac_secret: via env
-    # todo: jwks: via env? try to do Ed25519? try to certify via LE/cert-manager?
+    jwks:
+      - algorithm: Ed25519
+        key: |
+          {{ ed25519_private | multilined(5) }}
+      - algorithm: RS256
+        key: |
+          {{ rsa2048_private | multilined(5) }}
     cors:
       allowed_origins_from_client_redirect_uris: true
     authorization_policies:

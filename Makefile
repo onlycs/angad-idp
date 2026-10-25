@@ -81,10 +81,10 @@ build: api wasm ldap
 	bun generate
 
 precommit:
-	cd src-idp && cargo sqlx prepare
+	cd src-idp && rm -rf .sqlx && cargo sqlx prepare
 
 docker:
-	cd src-idp && cargo sqlx prepare
+	cd src-idp && rm -rf .sqlx && cargo sqlx prepare
 	docker compose build
 
 postinstall: wasm fmt

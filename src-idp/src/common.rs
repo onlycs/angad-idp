@@ -20,7 +20,7 @@ macro_rules! regex {
 pub(crate) static SLUG_RE: Lazy<Regex> = regex!(r"^[a-z][a-z0-9-]*$");
 pub(crate) static URL_RE: Lazy<Regex> = regex!(r"^https?://[^\s/$.?#].[^\s]*$");
 pub(crate) static URI_RE: Lazy<Regex> = regex!(r"^[^\s/$.?#].[^\s]*$");
-pub(crate) static DOMAIN_RE: Lazy<Regex> = regex!(r"^[a-z0-9-]+(\.[a-z0-9-]+)*(:\d{1,5})?$");
+pub(crate) static DOMAIN_RE: Lazy<Regex> = regex!(r"^([a-z0-9-]+\.)+[a-z0-9-]+$");
 pub(crate) static USERNAME_RE: Lazy<Regex> = regex!(r"^[a-z_][a-z0-9_-]{0,31}$");
 pub(crate) static EMAIL_RE: Lazy<Regex> = regex!(r"^[^\s@]+@[^\s@]+\.[^\s@]+$");
 
@@ -58,10 +58,10 @@ fn env_check_domain(s: impl AsRef<str>) -> Result<String, snafu::Whatever> {
     Ok(s.to_string())
 }
 
-fn env_parse_filepath(s: impl AsRef<str>) -> Result<PathBuf, snafu::Whatever> {
+fn env_parse_dirpath(s: impl AsRef<str>) -> Result<PathBuf, snafu::Whatever> {
     let buf = PathBuf::from(s.as_ref().to_string());
 
-    snafu::ensure_whatever!(!buf.has_trailing_sep(), "{buf:?} looks like a directory");
+    snafu::ensure_whatever!(buf.exists(), "{buf:?} doesn't exist. Mount something here.");
 
     Ok(buf)
 }
@@ -75,82 +75,95 @@ fn url_normalize(s: impl AsRef<str>) -> Result<String, snafu::Whatever> {
 }
 
 macro_rules! static_env {
-    (@parse [$( , $(#[$fattr:meta])* $fid:ident : $fty:ty )*]) => {
+    // ---- done: emit the checker ----
+    (@parse [$( $(#[$a:meta])* $id:ident : $t:ty, )*]) => {
+        /// Forces every env static so misconfiguration fails at startup.
         pub fn env_check_all() {
             $(
-                $(#[$fattr])*
-                let _: &$fty = ::std::hint::black_box(&*$fid);
+                $(#[$a])*
+                { let _: &$t = ::std::hint::black_box(&*$id); }
             )*
         }
     };
 
-    (@parse [$($fallible:tt)*] $(#[$attr:meta])* $id:ident : $t:ty = $thing:expr $(; $($rest:tt)*)?) => {
-        $(#[$attr])*
-        pub(crate) static $id: ::std::sync::LazyLock<$t> = ::std::sync::LazyLock::new(|| $thing);
-        static_env!(@parse [$($fallible)*, $(#[$attr])* $id: $t] $($($rest)*)?);
+    // ---- derived static ----
+    (@parse [$($seen:tt)*] $(#[$a:meta])* $id:ident : $t:ty = $init:expr $(; $($rest:tt)*)?) => {
+        static_env!(@emit $(#[$a])* $id: $t = $init);
+        static_env!(@parse [$($seen)* $(#[$a])* $id: $t,] $($($rest)*)?);
     };
 
-    (@parse [$($fallible:tt)*] $(#[$attr:meta])* $env:ident as $t:ident via $fn:ident or try $default:expr $(; $($rest:tt)*)?) => {
-        $(#[$attr])*
-        pub(crate) static $env: ::std::sync::LazyLock<$t> =
-            ::std::sync::LazyLock::new(|| {
-                ::std::env::var(stringify!($env))
-                    .map(|it| $fn(it).unwrap())
-                    .or_else(|e| $default.map_err(move |_| e))
-                    .unwrap()
+    // ---- parsed, fallible default ----
+    (@parse [$($seen:tt)*] $(#[$a:meta])* $env:ident as $t:ident via $f:ident or try $d:expr $(; $($rest:tt)*)?) => {
+        static_env!(@emit $(#[$a])* $env: $t =
+            match ::std::env::var(stringify!($env)) {
+                Ok(v) => static_env!(@parse_with $env, $f, v),
+                Err(_) => static_env!(@ok_or_die $env, $d),
             });
-        static_env!(@parse [$($fallible)*, $(#[$attr])* $env: $t] $($($rest)*)?);
+        static_env!(@parse [$($seen)* $(#[$a])* $env: $t,] $($($rest)*)?);
     };
 
-    (@parse [$($fallible:tt)*] $(#[$attr:meta])* $env:ident as $t:ident via $fn:ident or $default:expr $(; $($rest:tt)*)?) => {
-        $(#[$attr])*
-        pub(crate) static $env: ::std::sync::LazyLock<$t> = ::std::sync::LazyLock::new(|| {
-            ::std::env::var(stringify!($env))
-                .map(|it| $fn(it).unwrap())
-                .unwrap_or_else(|_| $default)
+    // ---- parsed, plain default ----
+    (@parse [$($seen:tt)*] $(#[$a:meta])* $env:ident as $t:ident via $f:ident or $d:expr $(; $($rest:tt)*)?) => {
+        static_env!(@emit $(#[$a])* $env: $t =
+            match ::std::env::var(stringify!($env)) {
+                Ok(v) => static_env!(@parse_with $env, $f, v),
+                Err(_) => $d,
+            });
+        static_env!(@parse [$($seen)* $(#[$a])* $env: $t,] $($($rest)*)?);
+    };
+
+    // ---- parsed, required ----
+    (@parse [$($seen:tt)*] $(#[$a:meta])* $env:ident as $t:ident via $f:ident $(; $($rest:tt)*)?) => {
+        static_env!(@emit $(#[$a])* $env: $t = {
+            let v = static_env!(@require $env);
+            static_env!(@parse_with $env, $f, v)
         });
-        static_env!(@parse [$($fallible)*] $($($rest)*)?);
+        static_env!(@parse [$($seen)* $(#[$a])* $env: $t,] $($($rest)*)?);
     };
 
-    (@parse [$($fallible:tt)*] $(#[$attr:meta])* $env:ident as $t:ident via $fn:expr $(; $($rest:tt)*)?) => {
-        $(#[$attr])*
-        pub(crate) static $env: ::std::sync::LazyLock<$t> =
-            ::std::sync::LazyLock::new(|| {
-                ::std::env::var(stringify!($env))
-                    .map(|it| $fn(it).unwrap())
-                    .unwrap()
-            });
-        static_env!(@parse [$($fallible)*, $(#[$attr])* $env: $t] $($($rest)*)?);
-    };
-
-    (@parse [$($fallible:tt)*] $(#[$attr:meta])* $env:ident or try $default:expr $(; $($rest:tt)*)?) => {
-        $(#[$attr])*
-        pub(crate) static $env: ::std::sync::LazyLock<String> =
-            ::std::sync::LazyLock::new(|| {
-                ::std::env::var(stringify!($env))
-                    .unwrap_or_else(|_| $default.unwrap())
-            });
-        static_env!(@parse [$($fallible)*, $(#[$attr])* $env: String] $($($rest)*)?);
-    };
-
-    (@parse [$($fallible:tt)*] $(#[$attr:meta])* $env:ident or $default:expr $(; $($rest:tt)*)?) => {
-        $(#[$attr])*
-        pub(crate) static $env: ::std::sync::LazyLock<String> = ::std::sync::LazyLock::new(|| {
+    // ---- String, fallible default ----
+    (@parse [$($seen:tt)*] $(#[$a:meta])* $env:ident or try $d:expr $(; $($rest:tt)*)?) => {
+        static_env!(@emit $(#[$a])* $env: String =
             ::std::env::var(stringify!($env))
-                .unwrap_or_else(|_| $default)
-        });
-        static_env!(@parse [$($fallible)*] $($($rest)*)?);
+                .unwrap_or_else(|_| static_env!(@ok_or_die $env, $d)));
+        static_env!(@parse [$($seen)* $(#[$a])* $env: String,] $($($rest)*)?);
     };
 
-    (@parse [$($fallible:tt)*] $(#[$attr:meta])* $env:ident $(; $($rest:tt)*)?) => {
-        $(#[$attr])*
-        pub(crate) static $env: ::std::sync::LazyLock<String> =
-            ::std::sync::LazyLock::new(|| {
-                ::std::env::var(stringify!($env)).unwrap()
-            });
-        static_env!(@parse [$($fallible)*, $(#[$attr])* $env: String] $($($rest)*)?);
+    // ---- String, plain default ----
+    (@parse [$($seen:tt)*] $(#[$a:meta])* $env:ident or $d:expr $(; $($rest:tt)*)?) => {
+        static_env!(@emit $(#[$a])* $env: String =
+            ::std::env::var(stringify!($env)).unwrap_or_else(|_| $d));
+        static_env!(@parse [$($seen)* $(#[$a])* $env: String,] $($($rest)*)?);
     };
 
+    // ---- String, required ----
+    (@parse [$($seen:tt)*] $(#[$a:meta])* $env:ident $(; $($rest:tt)*)?) => {
+        static_env!(@emit $(#[$a])* $env: String = static_env!(@require $env));
+        static_env!(@parse [$($seen)* $(#[$a])* $env: String,] $($($rest)*)?);
+    };
+
+    // ---- helpers ----
+    (@emit $(#[$a:meta])* $id:ident : $t:ty = $init:expr) => {
+        $(#[$a])*
+        pub(crate) static $id: ::std::sync::LazyLock<$t> = ::std::sync::LazyLock::new(|| $init);
+    };
+    (@require $env:ident) => {
+        ::std::env::var(stringify!($env)).unwrap_or_else(|e| {
+            panic!("environment variable `{}`: {e}", stringify!($env))
+        })
+    };
+    (@parse_with $env:ident, $f:ident, $v:expr) => {
+        $f($v).unwrap_or_else(|e| {
+            panic!("invalid value for `{}`: {e:?}", stringify!($env))
+        })
+    };
+    (@ok_or_die $env:ident, $d:expr) => {
+        ($d).unwrap_or_else(|e| {
+            panic!("`{}` is unset and has no usable default: {e:?}", stringify!($env))
+        })
+    };
+
+    // ---- entry point ----
     ($($input:tt)*) => {
         static_env!(@parse [] $($input)*);
     };
@@ -174,7 +187,7 @@ static_env!(
     FRONTEND_URL as String via url_normalize;
 
     AUTHELIA_DOMAIN as String via env_check_domain;
-    AUTHELIA_CONFIG_PATH as PathBuf via env_parse_filepath;
+    AUTHELIA_CONFIG_DIR as PathBuf via env_parse_dirpath;
 
     #[cfg(feature = "k8s")]
     AUTHELIA_NAMESPACE or try {

@@ -109,11 +109,18 @@ pub(crate) async fn create_impl(
     }
 
     if let Some(oidc) = oidc {
-        let client_secret = hex::encode(common::generate_secret()?);
-        let hash = common::argon2()
-            .hash_password(client_secret.as_bytes())
+        let client_secret = if oidc.public {
+            None
+        } else {
+            Some(hex::encode(common::generate_secret()?))
+        };
+
+        let hash = client_secret
+            .as_ref()
+            .map(|it| common::argon2().hash_password(it.as_bytes()))
+            .transpose()
             .context(InternalErrorContext!(via(display), common::ERROR_GENERIC))?
-            .to_string();
+            .map(|it| it.to_string());
 
         sqlx::query!(
             r#"
@@ -128,7 +135,7 @@ pub(crate) async fn create_impl(
         .await
         .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
-        res.client_secret = Some(client_secret);
+        res.client_secret = client_secret;
     }
 
     tx.commit()

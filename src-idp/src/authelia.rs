@@ -1,13 +1,21 @@
-use std::io;
+use std::{io, path::PathBuf};
 
 use askama::Template;
+use ed25519_dalek::{SigningKey, pkcs8::EncodePrivateKey as EdEncode};
+use getrandom::{SysRng, rand_core::UnwrapErr};
 use idp_proto::{
     auth::AccessLevel,
     integration::{INTERNAL_INTEGRATION_ID, INTERNAL_INTEGRATION_NAME},
 };
+use rsa::{
+    RsaPrivateKey,
+    pkcs8::{EncodePrivateKey as RsaEncode, LineEnding, der::zeroize::Zeroizing},
+    rand_core::OsRng,
+};
 use snafu::{Location, OptionExt, ResultExt, Snafu};
 use sqlx::types::Json;
 use tokio::{fs, io::AsyncWriteExt};
+use tracing::{error, info};
 
 use crate::{
     common::{self, AUTHELIA_DOMAIN, FRONTEND_URL, PgRef},
@@ -17,6 +25,8 @@ use crate::{
 mod filters {
     use std::fmt;
 
+    use itertools::Itertools;
+
     #[askama::filter_fn]
     pub(crate) fn xxh64(
         value: &dyn fmt::Display,
@@ -25,6 +35,26 @@ mod filters {
         Ok(hex::encode(
             xxhash_rust::xxh3::xxh3_64(value.to_string().as_bytes()).to_le_bytes(),
         ))
+    }
+
+    #[askama::filter_fn]
+    pub(crate) fn multilined(
+        value: &dyn fmt::Display,
+        _: &dyn askama::Values,
+        indent: usize,
+    ) -> askama::Result<String> {
+        Ok(value
+            .to_string()
+            .lines()
+            .enumerate()
+            .map(|(n, line)| {
+                if n == 0 {
+                    line.to_string()
+                } else {
+                    format!("{}{line}", "  ".repeat(indent))
+                }
+            })
+            .join("\n"))
     }
 }
 
@@ -44,41 +74,66 @@ pub(crate) enum RegenerateError {
         location: Location,
     },
 
-    #[snafu(display("At {location}: Failed to open `{:?}`\n{source}", &*common::AUTHELIA_CONFIG_PATH))]
+    #[snafu(display("At {location}: Failed to open `{path:?}`\n{source}",))]
     FileOpen {
+        path: PathBuf,
         source: io::Error,
         #[snafu(implicit)]
         location: Location,
     },
 
-    #[snafu(display("At {location}: Failed to write to `{:?}`\n{source}", &*common::AUTHELIA_CONFIG_PATH))]
+    #[snafu(display("At {location}: Failed to write to `{path:?}`\n{source}"))]
     FileWrite {
+        path: PathBuf,
         source: io::Error,
         #[snafu(implicit)]
         location: Location,
     },
 
-    #[snafu(display("At {location}: Failed to read from `{:?}`\n{source}", &*common::AUTHELIA_CONFIG_PATH))]
+    #[snafu(display("At {location}: Failed to read `{path:?}`\n{source}"))]
     FileRead {
+        path: PathBuf,
         source: io::Error,
         #[snafu(implicit)]
         location: Location,
     },
 
-    #[snafu(display("At {location}: Failed to parse yaml from `{:?}`\n{source}", &*common::AUTHELIA_CONFIG_PATH))]
+    #[snafu(display("At {location}: Failed to parse yaml from `{path:?}`\n{source}"))]
     FileParse {
+        path: PathBuf,
         source: serde_yaml::Error,
         #[snafu(implicit)]
         location: Location,
     },
 
-    #[snafu(display("At {location}: Missing string `authentication_backend.ldap.password` in `{:?}`", &*common::AUTHELIA_CONFIG_PATH))]
-    SubpathMissing {
+    #[snafu(display("At {location}: Missing string `authentication_backend.ldap.password`"))]
+    MissingConfigKey {
         #[snafu(implicit)]
         location: Location,
     },
 
-    #[snafu(display("At {location}: Failed to restart authelia:\n{source}"))]
+    #[snafu(display("At {location}: Failed RSA generation\n{source}"))]
+    RsaGen {
+        source: rsa::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("At {location}: Failed RSA to PEM export\n{source}"))]
+    RsaExport {
+        source: rsa::pkcs8::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("At {location}: Failed Ed25519 to PEM export\n{source}"))]
+    EdExport {
+        source: ed25519_dalek::pkcs8::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("At {location}: Failed to restart authelia\n{source}"))]
     Restart {
         source: snafu::Whatever,
         #[snafu(implicit)]
@@ -101,83 +156,142 @@ struct Application {
 #[derive(Template)]
 #[template(path = "authelia-config-template.yml")]
 #[allow(non_snake_case)]
-struct AutheliaConfigTemplate {
+struct AutheliaConfigTemplate<'a> {
     applications: Vec<Application>,
     integration_key: String,
+    rsa2048_private: &'a str,
+    ed25519_private: &'a str,
 }
 
-pub(crate) async fn regenerate(pg: impl PgRef) -> Result<(), RegenerateError> {
-    let applications = sqlx::query_as!(
-        Application,
-        r#"
-        SELECT
-            a.slug,
-            a.name,
-            COALESCE(
-                JSONB_AGG(
-                    JSONB_BUILD_OBJECT(
-                        'redirect_uris', o.redirect_uris,
-                        'client_secret_hash', o.client_secret_hash
-                    )
-                ),
-                '{}'::jsonb
-            ) AS "oidc: Json<ApplicationOidc>"
-        FROM applications a
-        LEFT JOIN applications_oidc o ON o.slug = a.slug
-        GROUP BY a.slug, a.name;
-        "#
-    )
-    .fetch_all(pg.as_ref())
-    .await
-    .context(DbSnafu)?;
+pub(crate) async fn regenerate(pg: impl PgRef) {
+    async fn _impl(pg: impl PgRef) -> Result<(), RegenerateError> {
+        info!("Regenerating authelia's configuration");
 
-    let path = &*common::AUTHELIA_CONFIG_PATH;
-    let integration_key = if path.exists() && path.is_file() {
-        let contents = fs::read_to_string(path).await.context(FileReadSnafu)?;
-        let yaml = serde_yaml::to_value(&contents).context(FileParseSnafu)?;
-
-        yaml.get("authentication_backend")
-            .context(SubpathMissingSnafu)?
-            .get("ldap")
-            .context(SubpathMissingSnafu)?
-            .get("password")
-            .context(SubpathMissingSnafu)?
-            .as_str()
-            .context(SubpathMissingSnafu)?
-            .to_string()
-    } else {
-        let res = integration::create_impl(
-            INTERNAL_INTEGRATION_ID.to_string(),
-            INTERNAL_INTEGRATION_NAME.to_string(),
-            AccessLevel::Read,
-            pg.as_ref(),
+        let applications = sqlx::query_as!(
+            Application,
+            r#"
+            SELECT
+                a.slug,
+                a.name,
+                JSONB_BUILD_OBJECT(
+                    'redirect_uris', o.redirect_uris,
+                    'client_secret_hash', o.client_secret_hash
+                ) AS "oidc!: Json<ApplicationOidc>"
+            FROM applications a
+            JOIN applications_oidc o ON o.slug = a.slug
+            "#
         )
+        .fetch_all(pg.as_ref())
         .await
-        .expect("Failed to create internal integration (this shouldn't happen unless db issues)");
+        .context(DbSnafu)?;
 
-        res.key.to_string()
-    };
+        let path = &*common::AUTHELIA_CONFIG_DIR;
+        let config = path.join("configuration.yml");
+        let rsa = path.join("rsa2048.pem");
+        let ed25519 = path.join("ed25519.pem");
 
-    let config = AutheliaConfigTemplate {
-        applications,
-        integration_key,
-    };
-    let render = config.render().context(AskamaSnafu)?;
+        let rsa = if rsa.exists() && rsa.is_file() {
+            fs::read_to_string(&rsa)
+                .await
+                .context(FileReadSnafu { path: rsa })?
+        } else {
+            let mut rng = OsRng;
+            let private = RsaPrivateKey::new(&mut rng, 2048).context(RsaGenSnafu)?;
+            let export = private
+                .to_pkcs8_pem(LineEnding::LF)
+                .context(RsaExportSnafu)?;
 
-    fs::OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(&*common::AUTHELIA_CONFIG_PATH)
-        .await
-        .context(FileOpenSnafu)?
-        .write_all(render.as_bytes())
-        .await
-        .context(FileWriteSnafu)?;
+            fs::write(&rsa, export.as_bytes())
+                .await
+                .context(FileWriteSnafu { path: rsa })?;
 
-    restart().await.context(RestartSnafu)?;
+            export.to_string()
+        };
 
-    Ok(())
+        let ed25519 = if ed25519.exists() && ed25519.is_file() {
+            fs::read_to_string(&ed25519)
+                .await
+                .context(FileReadSnafu { path: ed25519 })?
+        } else {
+            let mut rng = UnwrapErr(SysRng);
+            let private = SigningKey::generate(&mut rng);
+            let export = private
+                .to_pkcs8_pem(LineEnding::LF)
+                .context(EdExportSnafu)?;
+
+            fs::write(&ed25519, export.as_bytes())
+                .await
+                .context(FileWriteSnafu { path: ed25519 })?;
+
+            export.to_string()
+        };
+
+        let integration_key = if config.exists() && config.is_file() {
+            let contents = fs::read_to_string(&config).await.context(FileReadSnafu {
+                path: config.clone(),
+            })?;
+
+            let yaml = serde_yaml::to_value(&contents).context(FileParseSnafu {
+                path: config.clone(),
+            })?;
+
+            yaml.get("authentication_backend")
+                .context(MissingConfigKeySnafu)?
+                .get("ldap")
+                .context(MissingConfigKeySnafu)?
+                .get("password")
+                .context(MissingConfigKeySnafu)?
+                .as_str()
+                .context(MissingConfigKeySnafu)?
+                .to_string()
+        } else {
+            let res = integration::create_impl(
+                INTERNAL_INTEGRATION_ID.to_string(),
+                INTERNAL_INTEGRATION_NAME.to_string(),
+                AccessLevel::Read,
+                pg.as_ref(),
+            )
+            .await
+            .expect(
+                "Failed to create internal integration (this shouldn't happen unless db issues)",
+            );
+
+            res.key.to_string()
+        };
+
+        let render = AutheliaConfigTemplate {
+            applications,
+            integration_key,
+            rsa2048_private: rsa.as_str(),
+            ed25519_private: ed25519.as_str(),
+        }
+        .render()
+        .context(AskamaSnafu)?;
+
+        fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&config)
+            .await
+            .context(FileOpenSnafu {
+                path: config.clone(),
+            })?
+            .write_all(render.as_bytes())
+            .await
+            .context(FileWriteSnafu { path: config })?;
+
+        restart().await.context(RestartSnafu)?;
+
+        Ok(())
+    }
+
+    if let Err(res) = _impl(pg).await {
+        error!(
+            "Failed to regenerate authelia's config:\n{}",
+            snafu::Report::from_error(&res).to_string()
+        )
+    }
 }
 
 #[cfg(feature = "k8s")]
