@@ -11,7 +11,7 @@
 
 idp.dev.angad.page {
 	import devtls
-	reverse_proxy server:80
+	reverse_proxy host.docker.internal:5173
 }
 
 auth.dev.angad.page {

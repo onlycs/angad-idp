@@ -132,9 +132,9 @@ async fn setup_domain(pg: &PgPool) -> Result<(), DomainSetupError> {
         Application {
             slug: app::DOMAIN_SLUG.to_string(),
             name: app::DOMAIN_NAME.to_string(),
-            url: format!("{}/", *common::FRONTEND_URL),
+            url: format!("{}", *common::FRONTEND_URL),
             oidc: Some(ApplicationOidc {
-                redirect_uris: vec![format!("{}/oauth2/callback", *common::FRONTEND_URL)],
+                redirect_uris: vec![format!("{}", *common::FRONTEND_URL)],
                 public: true,
             }),
         },

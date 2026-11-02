@@ -18,4 +18,5 @@ export class Persisted<T> {
 }
 
 export const persisted = <T>(key: string, initial: T) => new Persisted(key, initial, localStorage);
-export const session = <T>(key: string, initial: T) => new Persisted(key, initial, sessionStorage);
+export const persist_session = <T>(key: string, initial: T) =>
+    new Persisted(key, initial, sessionStorage);

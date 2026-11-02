@@ -120,7 +120,6 @@ services:
           - idp.dev.angad.page
           - auth.dev.angad.page
 
-
 networks:
   backend:
     driver_opts:
