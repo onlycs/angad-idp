@@ -14,7 +14,8 @@ use transit_core::{InternalError, InternalErrorContext, TransitErrorContext};
 use crate::{
     app::{self, VerifyErrorCast},
     auth::{self, AuthErrorCast},
-    common, token,
+    authelia::AutheliaToken,
+    common,
 };
 
 pub(crate) fn ensure_password_strength(
@@ -136,7 +137,9 @@ pub(crate) async fn update(
     pg: Arc<PgPool>,
 ) -> Result<User, UserUpdateError> {
     let wants_update_self = if let Authentication::Token(token) = &auth {
-        let identity = token::parse(token).context(AuthErrorCast::<UserUpdateError>)?;
+        let identity = AutheliaToken::parse(token)
+            .await
+            .context(AuthErrorCast::<UserUpdateError>)?;
 
         id == *identity.uid
     } else {

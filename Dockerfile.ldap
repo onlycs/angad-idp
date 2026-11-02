@@ -19,7 +19,7 @@ COPY src-ldap/uniffi.toml /src/src-ldap/uniffi.toml
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/target \
     --mount=type=cache,target=/sccache \
-    cargo build --release --features client,uniffi
+    cargo build --release --features uniffi
 
 RUN uniffi-bindgen-go target/release/libidp_proto.so \
     -o /bindings -c /src/src-ldap/uniffi.toml

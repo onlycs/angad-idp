@@ -18,4 +18,10 @@ export default defineConfig({
             },
         }),
     ],
+    server: {
+        host: true,
+        port: 5173,
+        allowedHosts: ["idp.dev.angad.page"],
+        hmr: { protocol: "wss", host: "idp.dev.angad.page", clientPort: 443 },
+    },
 });

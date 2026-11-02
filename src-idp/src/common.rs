@@ -10,6 +10,7 @@ use sha2::Digest;
 use snafu::ResultExt;
 use sqlx::PgPool;
 use transit_core::{InternalError, InternalErrorContext};
+use url::Url;
 
 macro_rules! regex {
     ($re:literal) => {
@@ -19,21 +20,8 @@ macro_rules! regex {
 
 pub(crate) static SLUG_RE: Lazy<Regex> = regex!(r"^[a-z][a-z0-9-]*$");
 pub(crate) static URL_RE: Lazy<Regex> = regex!(r"^https?://[^\s/$.?#].[^\s]*$");
-pub(crate) static URI_RE: Lazy<Regex> = regex!(r"^[^\s/$.?#].[^\s]*$");
-pub(crate) static DOMAIN_RE: Lazy<Regex> = regex!(r"^([a-z0-9-]+\.)+[a-z0-9-]+$");
 pub(crate) static USERNAME_RE: Lazy<Regex> = regex!(r"^[a-z_][a-z0-9_-]{0,31}$");
 pub(crate) static EMAIL_RE: Lazy<Regex> = regex!(r"^[^\s@]+@[^\s@]+\.[^\s@]+$");
-
-fn env_parse_bool(s: String) -> Result<bool, InternalError> {
-    match s.trim().to_ascii_lowercase().as_str() {
-        "true" | "1" | "yes" => Ok(true),
-        "false" | "0" | "no" => Ok(false),
-        _ => Err(InternalError!(
-            ctx(none),
-            "Could not parse `{s}` as a boolean."
-        )),
-    }
-}
 
 fn env_parse_u16(s: String) -> Result<u16, snafu::Whatever> {
     s.parse()
@@ -50,14 +38,6 @@ fn parse_email_str(s: impl AsRef<str>) -> Result<String, snafu::Whatever> {
     parse_email(s).map(|it| it.to_string())
 }
 
-fn env_check_domain(s: impl AsRef<str>) -> Result<String, snafu::Whatever> {
-    let s = s.as_ref();
-
-    snafu::ensure_whatever!(DOMAIN_RE.is_match(s), "`{s}` is not a domain");
-
-    Ok(s.to_string())
-}
-
 fn env_parse_dirpath(s: impl AsRef<str>) -> Result<PathBuf, snafu::Whatever> {
     let buf = PathBuf::from(s.as_ref().to_string());
 
@@ -66,12 +46,30 @@ fn env_parse_dirpath(s: impl AsRef<str>) -> Result<PathBuf, snafu::Whatever> {
     Ok(buf)
 }
 
-fn url_normalize(s: impl AsRef<str>) -> Result<String, snafu::Whatever> {
+fn env_parse_filepath(s: impl AsRef<str>) -> Result<PathBuf, snafu::Whatever> {
+    let buf = PathBuf::from(s.as_ref().to_string());
+
+    snafu::ensure_whatever!(!buf.has_trailing_sep(), "{buf:?} looks like a directory");
+    snafu::ensure_whatever!(buf.exists(), "{buf:?} doesn't exist");
+
+    Ok(buf)
+}
+
+fn env_parse_url(s: impl AsRef<str>) -> Result<Url, snafu::Whatever> {
     let s = s.as_ref();
+    let u = Url::parse(s).whatever_context(format!("Failed to parse `{s}` as url"))?;
 
-    snafu::ensure_whatever!(URL_RE.is_match(s), "`{s}` is not a URL");
+    snafu::ensure_whatever!(!u.cannot_be_a_base(), "`{s}` seems to be a data: url");
+    snafu::ensure_whatever!(matches!(u.scheme(), "http" | "https"), "`{s}` not http(s)");
 
-    Ok(s.trim_end_matches("/").to_string())
+    Ok(u)
+}
+
+pub(crate) fn is_uri(s: impl AsRef<str>) -> bool {
+    let s = s.as_ref();
+    let Ok(u) = Url::parse(s) else { return false };
+
+    !u.cannot_be_a_base()
 }
 
 macro_rules! static_env {
@@ -172,21 +170,24 @@ macro_rules! static_env {
 static_env!(
     DATABASE_URL;
 
+    TLS_CERT as PathBuf via env_parse_filepath;
+    TLS_KEY as PathBuf via env_parse_filepath;
+
     LISTEN_ADDRESS or String::from("0.0.0.0");
     TRANSIT_PORT as u16 via env_parse_u16 or 23849;
-    WT_PORT as u16 via env_parse_u16 or 80;
-    WT_PATH or String::from("/api");
+
+    WS_PORT as u16 via env_parse_u16 or 80;
+    WS_PATH or String::from("api");
 
     SMTP_USERNAME;
     SMTP_PASSWORD;
     SMTP_FROM as Address via parse_email or try parse_email(&*SMTP_USERNAME);
     SMTP_SERVER;
-    // SMTP_USE_TLS as bool via env_parse_bool or true;
     INITIAL_ADMIN_EMAIL as String via parse_email_str;
 
-    FRONTEND_URL as String via url_normalize;
+    FRONTEND_URL as Url via env_parse_url;
 
-    AUTHELIA_DOMAIN as String via env_check_domain;
+    AUTHELIA_URL as Url via env_parse_url;
     AUTHELIA_CONFIG_DIR as PathBuf via env_parse_dirpath;
 
     #[cfg(feature = "k8s")]
@@ -236,6 +237,10 @@ pub fn argon2() -> Argon2<'static> {
 
 pub fn sha256(bytes: &[u8]) -> Vec<u8> {
     sha2::Sha256::new().chain_update(bytes).finalize().to_vec()
+}
+
+pub(crate) fn xxh64_hex(value: impl ToString) -> String {
+    hex::encode(xxhash_rust::xxh3::xxh3_64(value.to_string().as_bytes()).to_le_bytes())
 }
 
 pub(crate) trait PgRef {

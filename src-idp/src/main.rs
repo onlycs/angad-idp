@@ -1,7 +1,11 @@
 #![feature(option_zip, error_generic_member_access, path_trailing_sep)]
 #![allow(unexpected_cfgs)]
 
-use std::sync::Arc;
+use std::{
+    io,
+    net::{AddrParseError, SocketAddr},
+    sync::Arc,
+};
 
 use chrono::{TimeDelta, Utc};
 use idp_proto::{
@@ -18,10 +22,18 @@ use idp_proto::{
 };
 use snafu::{Location, ResultExt, Snafu};
 use sqlx::PgPool;
+use tokio::fs;
 use tracing::info;
 use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::SubscriberInitExt};
-use transit_core::server::{self, Router, TcpListenOptions, XwtListenOptions};
-use wtransport::Identity;
+use transit_server::{ServeOptions, router::Router};
+use transit_tcp::TransitTcp;
+use transit_tls::{
+    TransitTls,
+    server::{TlsError, TlsOptions},
+};
+use transit_tokio::RtTokio;
+use transit_ws::{TransitWs, WsListenOptions};
+use tungstenite::protocol::WebSocketConfig;
 
 mod app;
 mod auth;
@@ -29,14 +41,13 @@ mod authelia;
 mod common;
 mod integration;
 mod invite;
-mod token;
 mod user;
 
 fn init_logger() {
     #[cfg(debug_assertions)]
     const LOG_LEVEL: tracing::Level = tracing::Level::DEBUG;
     #[cfg(not(debug_assertions))]
-    const LOG_LEVEL: tracing::Level = tracing::Level::INFO;
+    const LOG_LEVEL: tracing::Level = tracing::Level::TRACE;
 
     let fmt = tracing_subscriber::fmt::layer().pretty();
 
@@ -52,14 +63,14 @@ pub enum DomainSetupError {
     #[snafu(display("At {location}: Failed to create internal application\n{source}"))]
     ApplicationCreate {
         source: ApplicationCreateError,
-        #[snafu(implicit)]
+        #[snafu(implicit, provide)]
         location: Location,
     },
 
     #[snafu(display("At {location}: Failed to send internal invite\n{source}"))]
     InviteSend {
         source: InviteCreateError,
-        #[snafu(implicit)]
+        #[snafu(implicit, provide)]
         location: Location,
     },
 }
@@ -69,7 +80,28 @@ pub enum StartupError {
     #[snafu(display("At {location}: Failed to set up domain\n{source}"))]
     DomainSetup {
         source: DomainSetupError,
-        #[snafu(implicit)]
+        #[snafu(implicit, provide)]
+        location: Location,
+    },
+
+    #[snafu(display("At {location}: Failed to parse as address\n{source}"))]
+    AddrParse {
+        source: AddrParseError,
+        #[snafu(implicit, provide)]
+        location: Location,
+    },
+
+    #[snafu(display("At {location}: Failed to read TLS cert\n{source}"))]
+    ReadTlsCert {
+        source: io::Error,
+        #[snafu(implicit, provide)]
+        location: Location,
+    },
+
+    #[snafu(display("At {location}: Failed to read TLS key\n{source}"))]
+    ReadTlsKey {
+        source: io::Error,
+        #[snafu(implicit, provide)]
         location: Location,
     },
 
@@ -89,7 +121,7 @@ pub enum StartupError {
 
     #[snafu(display("At {location}: Listen error\n{source}"))]
     Listen {
-        source: transit_core::server::ListenError,
+        source: TlsError<io::Error>,
         #[snafu(implicit)]
         location: Location,
     },
@@ -102,7 +134,7 @@ async fn setup_domain(pg: &PgPool) -> Result<(), DomainSetupError> {
             name: app::DOMAIN_NAME.to_string(),
             url: format!("{}/", *common::FRONTEND_URL),
             oidc: Some(ApplicationOidc {
-                redirect_uris: vec![format!("{}/", *common::FRONTEND_URL)],
+                redirect_uris: vec![format!("{}/oauth2/callback", *common::FRONTEND_URL)],
                 public: true,
             }),
         },
@@ -179,26 +211,34 @@ async fn main() -> Result<(), StartupError> {
         .route::<UserDelete, _>(user::delete)
         .build();
 
-    let tcp = tokio::spawn(server::listen_tcp_tls(
-        TcpListenOptions {
-            addr: &*common::LISTEN_ADDRESS,
-            port: *common::TRANSIT_PORT,
-            tls: None,
+    let ip = common::LISTEN_ADDRESS.parse().context(AddrParseSnafu)?;
+
+    let tcp = tokio::spawn(transit_server::serve::<RtTokio, TransitTls<TransitTcp>, _>(
+        TlsOptions {
+            inner: SocketAddr::new(ip, *common::TRANSIT_PORT),
+            cert_chain: fs::read(&*common::TLS_CERT)
+                .await
+                .context(ReadTlsCertSnafu)?,
+            private_key: fs::read(&*common::TLS_KEY).await.context(ReadTlsKeySnafu)?,
+            client_ca: None,
         },
+        ServeOptions::default(),
         Arc::clone(&router),
     ));
 
-    let xwt = tokio::spawn(server::listen_xwt(
-        XwtListenOptions {
-            addr: &*common::LISTEN_ADDRESS,
-            port: *common::WT_PORT,
-            path: common::WT_PATH.clone(),
-            tls: Identity::self_signed(["localhost", "127.0.0.1"]).expect("Invalid SAN"),
-        },
-        router,
+    let wss = tokio::spawn(transit_server::serve::<RtTokio, TransitWs<TransitTcp>, _>(
+        (
+            SocketAddr::new(ip, *common::WS_PORT),
+            WsListenOptions {
+                path: common::WS_PATH.to_string(),
+                config: WebSocketConfig::default(),
+            },
+        ),
+        ServeOptions::default(),
+        Arc::clone(&router),
     ));
 
-    let (left, right) = tokio::join!(tcp, xwt);
+    let (left, right) = tokio::join!(tcp, wss);
     left.unwrap().unwrap();
     right.unwrap().unwrap();
 

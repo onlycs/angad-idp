@@ -1,24 +1,34 @@
-use std::{io, path::PathBuf};
+use std::{io, path::PathBuf, str::FromStr};
 
 use askama::Template;
-use ed25519_dalek::{SigningKey, pkcs8::EncodePrivateKey as EdEncode};
+use chrono::{TimeZone, Utc};
+use ed25519_dalek::{
+    SigningKey,
+    pkcs8::{DecodePrivateKey, EncodePrivateKey as EdEncode},
+};
 use getrandom::{SysRng, rand_core::UnwrapErr};
 use idp_proto::{
+    app::{DOMAIN_SLUG, Membership},
     auth::AccessLevel,
+    error::Denied,
     integration::{INTERNAL_INTEGRATION_ID, INTERNAL_INTEGRATION_NAME},
 };
+use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 use rsa::{
     RsaPrivateKey,
-    pkcs8::{EncodePrivateKey as RsaEncode, LineEnding, der::zeroize::Zeroizing},
+    pkcs8::{EncodePrivateKey as RsaEncode, LineEnding},
     rand_core::OsRng,
 };
+use serde::Deserialize;
 use snafu::{Location, OptionExt, ResultExt, Snafu};
 use sqlx::types::Json;
 use tokio::{fs, io::AsyncWriteExt};
 use tracing::{error, info};
+use transit_core::InternalError;
 
 use crate::{
-    common::{self, AUTHELIA_DOMAIN, FRONTEND_URL, PgRef},
+    auth::AuthError,
+    common::{self, AUTHELIA_URL, FRONTEND_URL, PgRef},
     integration,
 };
 
@@ -27,14 +37,14 @@ mod filters {
 
     use itertools::Itertools;
 
+    use crate::common;
+
     #[askama::filter_fn]
     pub(crate) fn xxh64(
         value: &dyn fmt::Display,
         _: &dyn askama::Values,
     ) -> askama::Result<String> {
-        Ok(hex::encode(
-            xxhash_rust::xxh3::xxh3_64(value.to_string().as_bytes()).to_le_bytes(),
-        ))
+        Ok(common::xxh64_hex(value))
     }
 
     #[askama::filter_fn]
@@ -59,7 +69,7 @@ mod filters {
 }
 
 #[derive(Snafu, Debug)]
-pub(crate) enum RegenerateError {
+pub(crate) enum AutheliaError {
     #[snafu(display("At {location}: Database error\n{source}"))]
     Db {
         source: sqlx::Error,
@@ -99,7 +109,7 @@ pub(crate) enum RegenerateError {
     },
 
     #[snafu(display("At {location}: Failed to parse yaml from `{path:?}`\n{source}"))]
-    FileParse {
+    ConfigParse {
         path: PathBuf,
         source: serde_yaml::Error,
         #[snafu(implicit)]
@@ -133,12 +143,55 @@ pub(crate) enum RegenerateError {
         location: Location,
     },
 
+    #[snafu(display("At {location}: Failed PEM to Ed25519 import\n{source}"))]
+    EdImport {
+        source: ed25519_dalek::pkcs8::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("At {location}: Failed to decode JWT\n{source}"))]
+    JwtDecode {
+        source: jsonwebtoken::errors::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("At {location}: Invalid client_id `{found}` in JWT"))]
+    InvalidClientId {
+        found: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("At {location}: Invalid iat `{found}` in JWT"))]
+    InvalidIat {
+        found: i64,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
     #[snafu(display("At {location}: Failed to restart authelia\n{source}"))]
     Restart {
         source: snafu::Whatever,
         #[snafu(implicit)]
         location: Location,
     },
+}
+
+pub(crate) struct AutheliaSnafu;
+
+impl snafu::IntoError<AuthError> for AutheliaSnafu {
+    type Source = AutheliaError;
+
+    fn into_error(self, source: Self::Source) -> AuthError {
+        match source {
+            AutheliaError::JwtDecode { .. }
+            | AutheliaError::InvalidClientId { .. }
+            | AutheliaError::InvalidIat { .. } => Denied.into(),
+            _ => InternalError!(ctx(source), common::ERROR_GENERIC).into(),
+        }
+    }
 }
 
 #[derive(serde::Deserialize)]
@@ -163,8 +216,107 @@ struct AutheliaConfigTemplate<'a> {
     ed25519_private: &'a str,
 }
 
+async fn pem(
+    path: PathBuf,
+    generator: fn() -> Result<String, AutheliaError>,
+) -> Result<String, AutheliaError> {
+    if path.exists() && path.is_file() {
+        fs::read_to_string(&path)
+            .await
+            .context(FileReadSnafu { path })
+    } else {
+        let contents = generator()?;
+
+        fs::write(&path, contents.as_bytes())
+            .await
+            .context(FileWriteSnafu { path })?;
+
+        Ok(contents.to_string())
+    }
+}
+
+fn make_rsa() -> Result<String, AutheliaError> {
+    let mut rng = OsRng;
+    let private = RsaPrivateKey::new(&mut rng, 2048).context(RsaGenSnafu)?;
+
+    private
+        .to_pkcs8_pem(LineEnding::LF)
+        .context(RsaExportSnafu)
+        .map(|it| it.to_string())
+}
+
+fn make_ed25519() -> Result<String, AutheliaError> {
+    let mut rng = UnwrapErr(SysRng);
+    let private = SigningKey::generate(&mut rng);
+
+    private
+        .to_pkcs8_pem(LineEnding::LF)
+        .context(EdExportSnafu)
+        .map(|it| it.to_string())
+}
+
+pub(crate) async fn verify_key() -> Result<DecodingKey, AutheliaError> {
+    let path = &*common::AUTHELIA_CONFIG_DIR;
+    let ed25519 = path.join("ed25519.pem");
+    let pem = pem(ed25519, make_ed25519).await?;
+    let sk = SigningKey::from_pkcs8_pem(&pem).context(EdImportSnafu)?;
+    let pk = sk.verifying_key().to_bytes();
+    Ok(DecodingKey::from_ed_der(&pk))
+}
+
 pub(crate) async fn regenerate(pg: impl PgRef) {
-    async fn _impl(pg: impl PgRef) -> Result<(), RegenerateError> {
+    #[cfg(feature = "k8s")]
+    async fn restart_k8s() -> Result<(), snafu::Whatever> {
+        use k8s_openapi::api::apps::v1::Deployment;
+        use kube::{Api, Client};
+
+        let client = Client::try_default()
+            .await
+            .whatever_context("Failed to create kubernetes client instance")?;
+
+        let deployments: Api<Deployment> = Api::namespaced(client, &common::AUTHELIA_NAMESPACE);
+
+        deployments
+            .restart(&common::AUTHELIA_DEPLOYMENT)
+            .await
+            .whatever_context("Failed to restart authelia's deployment")?;
+
+        Ok(())
+    }
+
+    #[cfg(feature = "docker")]
+    async fn restart_docker() -> Result<(), snafu::Whatever> {
+        use bollard::Docker;
+
+        let docker = Docker::connect_with_socket_defaults()
+            .whatever_context("Failed to connect to docker socket. Did you mount it?")?;
+
+        docker
+            .restart_container(&common::AUTHELIA_CONTAINER, None)
+            .await
+            .whatever_context("Failed to restart authelia's container")?;
+
+        Ok(())
+    }
+
+    async fn restart() -> Result<(), snafu::Whatever> {
+        cfg_select! {
+            not(any(feature = "docker", feature = "k8s")) => {
+                compile_error!("Require either `docker` or `k8s`")
+            }
+            all(feature = "docker", feature = "k8s") => {
+                if restart_k8s().await.is_err() {
+                    restart_docker().await?;
+                }
+
+                Ok(())
+            }
+            feature = "docker" => restart_docker().await,
+            feature = "k8s" => restart_k8s().await,
+        }
+    }
+
+    async fn _impl(pg: impl PgRef) -> Result<(), AutheliaError> {
         info!("Regenerating authelia's configuration");
 
         let applications = sqlx::query_as!(
@@ -187,51 +339,16 @@ pub(crate) async fn regenerate(pg: impl PgRef) {
 
         let path = &*common::AUTHELIA_CONFIG_DIR;
         let config = path.join("configuration.yml");
-        let rsa = path.join("rsa2048.pem");
-        let ed25519 = path.join("ed25519.pem");
 
-        let rsa = if rsa.exists() && rsa.is_file() {
-            fs::read_to_string(&rsa)
-                .await
-                .context(FileReadSnafu { path: rsa })?
-        } else {
-            let mut rng = OsRng;
-            let private = RsaPrivateKey::new(&mut rng, 2048).context(RsaGenSnafu)?;
-            let export = private
-                .to_pkcs8_pem(LineEnding::LF)
-                .context(RsaExportSnafu)?;
-
-            fs::write(&rsa, export.as_bytes())
-                .await
-                .context(FileWriteSnafu { path: rsa })?;
-
-            export.to_string()
-        };
-
-        let ed25519 = if ed25519.exists() && ed25519.is_file() {
-            fs::read_to_string(&ed25519)
-                .await
-                .context(FileReadSnafu { path: ed25519 })?
-        } else {
-            let mut rng = UnwrapErr(SysRng);
-            let private = SigningKey::generate(&mut rng);
-            let export = private
-                .to_pkcs8_pem(LineEnding::LF)
-                .context(EdExportSnafu)?;
-
-            fs::write(&ed25519, export.as_bytes())
-                .await
-                .context(FileWriteSnafu { path: ed25519 })?;
-
-            export.to_string()
-        };
+        let rsa = pem(path.join("rsa2048.pem"), make_rsa).await?;
+        let ed25519 = pem(path.join("ed25519.pem"), make_ed25519).await?;
 
         let integration_key = if config.exists() && config.is_file() {
             let contents = fs::read_to_string(&config).await.context(FileReadSnafu {
                 path: config.clone(),
             })?;
 
-            let yaml = serde_yaml::to_value(&contents).context(FileParseSnafu {
+            let yaml = serde_yaml::to_value(&contents).context(ConfigParseSnafu {
                 path: config.clone(),
             })?;
 
@@ -294,53 +411,55 @@ pub(crate) async fn regenerate(pg: impl PgRef) {
     }
 }
 
-#[cfg(feature = "k8s")]
-async fn restart_k8s() -> Result<(), snafu::Whatever> {
-    use k8s_openapi::api::apps::v1::Deployment;
-    use kube::{Api, Client};
-
-    let client = Client::try_default()
-        .await
-        .whatever_context("Failed to create kubernetes client instance")?;
-
-    let deployments: Api<Deployment> = Api::namespaced(client, &common::AUTHELIA_NAMESPACE);
-
-    deployments
-        .restart(&common::AUTHELIA_DEPLOYMENT)
-        .await
-        .whatever_context("Failed to restart authelia's deployment")?;
-
-    Ok(())
+pub(crate) struct AutheliaToken {
+    pub(crate) uid: String,
+    pub(crate) memberships: Vec<Membership>,
+    pub(crate) issued: chrono::DateTime<Utc>,
 }
 
-#[cfg(feature = "docker")]
-async fn restart_docker() -> Result<(), snafu::Whatever> {
-    use bollard::Docker;
-
-    let docker = Docker::connect_with_socket_defaults()
-        .whatever_context("Failed to connect to docker socket. Did you mount it?")?;
-
-    docker
-        .restart_container(&common::AUTHELIA_CONTAINER, None)
-        .await
-        .whatever_context("Failed to restart authelia's container")?;
-
-    Ok(())
-}
-
-async fn restart() -> Result<(), snafu::Whatever> {
-    cfg_select! {
-        not(any(feature = "docker", feature = "k8s")) => {
-            compile_error!("Require either `docker` or `k8s`")
-        }
-        all(feature = "docker", feature = "k8s") => {
-            if restart_k8s().await.is_err() {
-                restart_docker().await?;
+impl AutheliaToken {
+    pub(crate) async fn parse(token: impl AsRef<str>) -> Result<AutheliaToken, AuthError> {
+        async fn _impl(token: impl AsRef<str>) -> Result<AutheliaToken, AutheliaError> {
+            #[derive(Deserialize)]
+            struct RawClaims {
+                uid: String,
+                #[serde(default)]
+                groups: Vec<String>,
+                iat: i64,
+                client_id: String,
             }
 
-            Ok(())
+            let mut v = Validation::new(Algorithm::EdDSA);
+            v.set_issuer(&[AUTHELIA_URL.as_str()]);
+            v.validate_aud = false;
+
+            let key = verify_key().await?;
+
+            let claims = jsonwebtoken::decode::<RawClaims>(token.as_ref(), &key, &v)
+                .context(JwtDecodeSnafu)?
+                .claims;
+
+            snafu::ensure!(
+                claims.client_id == common::xxh64_hex(DOMAIN_SLUG),
+                InvalidClientIdSnafu {
+                    found: claims.client_id
+                }
+            );
+
+            Ok(AutheliaToken {
+                uid: claims.uid,
+                memberships: claims
+                    .groups
+                    .into_iter()
+                    .filter_map(|g| Membership::from_str(g.as_str()).ok())
+                    .collect(),
+                issued: Utc
+                    .timestamp_opt(claims.iat, 0)
+                    .single()
+                    .context(InvalidIatSnafu { found: claims.iat })?,
+            })
         }
-        feature = "docker" => restart_docker().await,
-        feature = "k8s" => restart_k8s().await,
+
+        _impl(token).await.context(AutheliaSnafu)
     }
 }

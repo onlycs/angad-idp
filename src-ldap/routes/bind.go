@@ -33,11 +33,14 @@ func Bind(w ldapserver.ResponseWriter, m *ldapserver.Message) {
 
 	name := string(dn.RDNs[0].Attributes[0].Value)
 
+	fmt.Print("name ")
+	fmt.Println(name)
+
 	if name == "$service" {
 		pass := r.AuthenticationSimple().String()
 		res_err := proto.RouteIntegrationAuthorize(Api, proto.IntegrationAuthorizeRequest{
 			Key:   pass,
-			Level: proto.AccessLevelReadWrite,
+			Level: proto.AccessLevelRead,
 		})
 
 		if res_err == nil {
@@ -56,6 +59,8 @@ func Bind(w ldapserver.ResponseWriter, m *ldapserver.Message) {
 		Password:        r.AuthenticationSimple().String(),
 	})
 
+	fmt.Printf("outer: %T\n", errors.Unwrap(res_err))
+
 	if res_err == nil {
 		res.SetResultCode(ldapserver.LDAPResultSuccess)
 
@@ -63,19 +68,19 @@ func Bind(w ldapserver.ResponseWriter, m *ldapserver.Message) {
 		return
 	}
 
-	if transport, ok := errors.AsType[proto.CheckPasswordFfiErrorTransit](res_err); ok {
-		slog.Warn(fmt.Sprint("Transit error:\n", transport.Source.Report()))
+	if transport, ok := errors.AsType[*proto.CheckPasswordFfiErrorTransit](res_err); ok {
+		slog.Warn(fmt.Sprint("Transit error:\n", transport.Source.Report))
 		res.SetResultCode(ldapserver.LDAPResultOperationsError)
 		res.SetDiagnosticMessage("Internal server error")
 	}
 
-	if error, ok := errors.AsType[proto.CheckPasswordFfiErrorProtocol](res_err); ok {
-		if no_user, ok := errors.AsType[proto.CheckPasswordErrorNoUser](error); ok {
-			res.SetResultCode(ldapserver.LDAPResultNoSuchObject)
+	if error, ok := errors.AsType[*proto.CheckPasswordFfiErrorProtocol](res_err); ok {
+		if no_user, ok := errors.AsType[*proto.CheckPasswordErrorNoUser](error.Source); ok {
+			res.SetResultCode(ldapserver.LDAPResultInvalidCredentials)
 			res.SetDiagnosticMessage(no_user.Source.Display())
 		}
 
-		if incorrect, ok := errors.AsType[proto.CheckPasswordErrorIncorrectPassword](error); ok {
+		if incorrect, ok := errors.AsType[*proto.CheckPasswordErrorIncorrectPassword](error.Source); ok {
 			res.SetResultCode(ldapserver.LDAPResultInvalidCredentials)
 			res.SetDiagnosticMessage(incorrect.Source.Display())
 		}

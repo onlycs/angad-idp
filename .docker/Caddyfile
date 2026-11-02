@@ -1,0 +1,20 @@
+{
+	auto_https disable_certs
+	servers {
+		protocols h1 h2
+	}
+}
+
+(devtls) {
+	tls /certs/fullchain.pem /certs/key.pem
+}
+
+idp.dev.angad.page {
+	import devtls
+	reverse_proxy server:80
+}
+
+auth.dev.angad.page {
+	import devtls
+	reverse_proxy server:9091
+}

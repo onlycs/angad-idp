@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"angad.page/transit/transit"
+	transit "angad.page/transit/transit_ffi"
 	"github.com/go-ldap/ldap/v3"
 	"github.com/lor00x/goldap/message"
 	"github.com/vjeantet/ldapserver"
@@ -45,12 +45,12 @@ func Setup() {
 		panic(conv_err)
 	}
 
-	// var tls transit.Tls = transit.TlsInternal{}
-	l_api, transit_err := transit.Connect(transit.TransitOptions{
-		Connect: transit.ConnectOptions{
-			Addr: transit_addr,
-			Port: uint16(transit_port),
-			Crt:  nil,
+	l_api, transit_err := transit.Connect(transit.ConnectOptions{
+		Address: transit_addr,
+		Port:    uint16(transit_port),
+		Tls: &transit.TlsOptions{
+			ServerName: "idp.dev.angad.page",
+			Ca:         transit.RootCaInternal{},
 		},
 	})
 
@@ -63,7 +63,7 @@ func Setup() {
 
 func HandleError[
 	T interface {
-		~struct{ Source *transit.RouteError }
+		~struct{ Source transit.TransitError }
 		error
 	},
 	P error,
@@ -76,8 +76,8 @@ func HandleError[
 	}
 
 	if transport, ok := errors.AsType[T](err); ok {
-		src := struct{ Source *transit.RouteError }(transport).Source
-		slog.Warn("Transit error:\n" + src.Report())
+		src := struct{ Source transit.TransitError }(transport).Source
+		slog.Warn("Transit error:\n" + src.Report)
 	} else if p, ok := errors.AsType[P](err); ok {
 		return &p, true, false
 	} else {

@@ -6,37 +6,37 @@
     "tab_size": 4,
     "languages": {
         "TypeScript": {
-            "formatter": "prettier",
+            "formatter": "prettier"
         },
         "Vue.js": {
-            "formatter": "prettier",
+            "formatter": "prettier"
         },
         "CSS": {
             "language_servers": ["tailwindcss-intellisense-css", "!vscode-css-language-server"],
-            "formatter": "prettier",
+            "formatter": "prettier"
         },
         "Markdown": {
-            "formatter": "prettier",
+            "formatter": "prettier"
         },
         "YAML": {
             "formatter": "prettier",
-            "tab_size": 2,
+            "tab_size": 2
         },
         "SQL": {
-            "tab_size": 4,
+            "tab_size": 4
         },
         "Docker Compose": {
-            "tab_size": 2,
-        },
+            "tab_size": 2
+        }
     },
     "file_types": {
-        "Dockerfile": ["Dockerfile", "Dockerfile.*"],
+        "Dockerfile": ["Dockerfile", "Dockerfile.*"]
     },
     "lsp": {
         "tailwindcss-language-server": {
             "settings": {
                 "includeLanguages": {
-                    "vue": "html",
+                    "vue": "html"
                 },
                 "classFunctions": ["cn"],
                 "experimental": {
@@ -44,22 +44,22 @@
                         "class=\"([^\"]*)\"",
                         "class='([^']*)'",
                         ":class=\"([^\"]*)\"",
-                        ":class='([^']*)'",
-                    ],
-                },
-            },
+                        ":class='([^']*)'"
+                    ]
+                }
+            }
         },
         "rust-analyzer": {
             "initialization_options": {
                 "check": {
-                    "command": "clippy",
+                    "command": "clippy"
                 },
                 "cargo": {
-                    "allFeatures": true,
+                    "allFeatures": true
                     // "target": "wasm32-unknown-unknown"
                     // "features": ["docker"],
-                },
-            },
-        },
-    },
+                }
+            }
+        }
+    }
 }

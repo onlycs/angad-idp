@@ -1,4 +1,7 @@
 # yaml-language-server: $schema=https://www.authelia.com/schemas/latest/json-schema/configuration.json
+theme: dark
+server:
+  asset_path: /assets
 authentication_backend:
   refresh_interval: 5 minutes
   password_reset:
@@ -7,11 +10,9 @@ authentication_backend:
   password_change:
     disable: true
   ldap:
-    address: "ldap://127.0.0.1"
+    address: "ldap://127.0.0.1:389"
     implementation: custom
     timeout: 5s
-    tls:
-      skip_verify: true # TLS to actual IdP is handled by the outpost
     pooling:
       enable: false
       count: 5
@@ -30,6 +31,9 @@ authentication_backend:
       mail: "mail"
       group_name: "cn"
       member_of: "memberOf"
+      extra:
+        uid:
+          value_type: string
 totp:
   disable: false
   issuer: "Angad Auth"
@@ -52,20 +56,15 @@ password_policy:
     min_score: 3
 session:
   cookies:
-    - domain: "{{ &*AUTHELIA_DOMAIN }}"
-      authelia_url: "https://{{ &*AUTHELIA_DOMAIN }}"
-  redis:
-    tls:
-      skip_verify: true # in-cluster, therefore idgaf sue me.
+    - domain: "{{ &*AUTHELIA_URL.host().unwrap().to_string() }}"
+      authelia_url: "{{ &*AUTHELIA_URL.to_string() }}"
 storage:
   postgres:
     schema: public
-    tls:
-      skip_verify: true # again, in-cluster
 notifier:
   disable_startup_check: false
   smtp:
-    identifier: "{{ &*AUTHELIA_DOMAIN }}"
+    identifier: "{{ &*AUTHELIA_URL.host().unwrap().to_string() }}"
     subject: "[Angad Auth] {title}"
 telemetry:
   metrics:
@@ -80,6 +79,7 @@ identity_providers:
         key: |
           {{ rsa2048_private | multilined(5) }}
     cors:
+      endpoints: ["token", "userinfo", "revocation"]
       allowed_origins_from_client_redirect_uris: true
     authorization_policies:
       # {% for app in applications %}
@@ -93,12 +93,24 @@ identity_providers:
               - "group:{{ app.slug }}:admins"
       # {% endif %}
       # {% endfor %}
+    claims_policies:
+      withuid:
+        access_token: ["groups", "uid"]
+        custom_claims:
+          uid:
+            attribute: uid
+    scopes:
+      uid:
+        claims: ["uid"]
     clients:
       # {% for app in applications %}
       # {% if let Some(oidc) = app.oidc.as_ref() %}
       - client_id: "{{ app.slug | xxh64 }}"
         client_name: "{{ app.name }}"
         authorization_policy: "{{ app.slug }}"
+        claims_policy: withuid
+        access_token_signed_response_alg: Ed25519
+        requested_audience_mode: implicit
         # {% if let Some(secret) = oidc.client_secret_hash.as_ref() %}
         client_secret: "{{ secret }}"
         # {% else %}
@@ -106,6 +118,9 @@ identity_providers:
         require_pkce: true
         # {% endif %}
         pkce_challenge_method: S256
+        scopes: ["openid", "offline_access", "profile", "email", "groups", "uid"]
+        grant_types: ["authorization_code", "refresh_token"]
+        response_types: ["code"]
         redirect_uris:
           # {% for uri in oidc.redirect_uris %}
           - "{{ uri }}"

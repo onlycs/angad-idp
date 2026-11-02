@@ -17,6 +17,36 @@ func Search(w ldapserver.ResponseWriter, m *ldapserver.Message) {
 	res := ldapserver.NewSearchResultDoneResponse(ldap.LDAPResultSuccess)
 	defer func() { w.Write(res) }()
 
+	if string(req.BaseObject()) == "" && req.Scope() == ldap.ScopeBaseObject {
+		ent := ldapserver.NewSearchResultEntry("")
+
+		attrs := req.Attributes()
+		want := func(name string) bool {
+			if len(attrs) == 0 {
+				return true
+			}
+			for _, attr := range attrs {
+				if strings.EqualFold(string(attr), name) || attr == "*" {
+					return true
+				}
+			}
+			return false
+		}
+
+		if want("objectClass") {
+			ent.AddAttribute("objectClass", "top")
+		}
+		if want("namingContexts") {
+			ent.AddAttribute("namingContexts", "dc=angad,dc=page")
+		}
+		if want("supportedLDAPVersion") {
+			ent.AddAttribute("supportedLDAPVersion", "3")
+		}
+
+		w.Write(ent)
+		return
+	}
+
 	sess, ok := getSession(m)
 	if !ok {
 		res = ldapserver.NewSearchResultDoneResponse(ldapserver.LDAPResultInsufficientAccessRights)

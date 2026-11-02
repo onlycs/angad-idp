@@ -10,20 +10,17 @@ services:
       - .env
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${IDP_DB}
+      TLS_CERT: /certs/fullchain.pem
+      TLS_KEY: /certs/key.pem
     ports:
       - "23849:23849"
-      - "8080:80"
     depends_on:
       postgres:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/23849"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - authelia-config:/config
+      - /var/lib/acme/dev.angad.page:/certs:ro
     networks: [backend]
 
   ldap:
@@ -32,17 +29,12 @@ services:
     container_name: ldap
     restart: unless-stopped
     environment:
-      TRANSIT_ADDRESS: "server"
+      TRANSIT_ADDRESS: "127.0.0.1"
       TRANSIT_PORT: "23849"
     depends_on:
       server:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/389"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    networks: [backend]
+        condition: service_started
+    network_mode: service:server
 
   authelia:
     image: authelia/authelia:4.39
@@ -50,6 +42,8 @@ services:
     restart: unless-stopped
     volumes:
       - authelia-config:/config
+      - .docker/favicon.ico:/assets/favicon.ico
+      - .docker/logo.png:/assets/logo.png
     env_file: .env
     environment:
       TZ: ${TZ:-UTC}
@@ -58,26 +52,20 @@ services:
       AUTHELIA_STORAGE_ENCRYPTION_KEY: ${AUTHELIA_STORAGE_ENCRYPTION_KEY}
       # Storage -> Postgres
       AUTHELIA_STORAGE_POSTGRES_ADDRESS: tcp://postgres:5432
-      AUTHELIA_STORAGE_POSTGRES_DATABASE: ${AUTHELIA_DB}
+      AUTHELIA_STORAGE_POSTGRES_DATABASE: ${DB_AUTHELIA}
       AUTHELIA_STORAGE_POSTGRES_USERNAME: ${POSTGRES_USER}
       AUTHELIA_STORAGE_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       # Sessions -> Redis
       AUTHELIA_SESSION_REDIS_HOST: redis
       AUTHELIA_SESSION_REDIS_PORT: "6379"
-      # Users -> your LDAP container
-      AUTHELIA_AUTHENTICATION_BACKEND_LDAP_ADDRESS: ldap://ldap:389
-    ports:
-      - "${AUTHELIA_PORT:-9091}:9091"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       ldap:
-        condition: service_healthy
-      server:
-        condition: service_healthy
-    networks: [backend]
+        condition: service_started
+    network_mode: service:server
 
   postgres:
     image: postgres:17-alpine
@@ -112,10 +100,34 @@ services:
       retries: 10
     networks: [backend]
 
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - .docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - /var/lib/acme/dev.angad.page:/certs:ro
+      - caddy-data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on: [server, authelia]
+    networks:
+      backend:
+        aliases:
+          - idp.dev.angad.page
+          - auth.dev.angad.page
+
+
 networks:
   backend:
+    driver_opts:
+      com.docker.network.bridge.name: br-idp
 
 volumes:
+  caddy-data:
   postgres-data:
   redis-data:
   authelia-config:

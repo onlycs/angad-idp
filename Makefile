@@ -13,6 +13,7 @@ help:
 	@echo "  wasm           - Build WASM package and generate bindings"
 	@echo "  api            - Build API"
 	@echo "  fmt            - Format everything"
+	@echo "  update         - Update cargo deps"
 
 define RUST_SRC
 $(shell find $(1)/src -type f -name '*.rs') \
@@ -28,11 +29,11 @@ endef
 
 proto-wasm: $(call RUST_SRC,src-proto)
 	@echo "=== Building proto for wasm32"
-	cd src-proto && cargo build --release --features client,tokio --target wasm32-unknown-unknown
+	cd src-proto && cargo build --release --target wasm32-unknown-unknown
 
 proto-native: $(call RUST_SRC,src-proto)
 	@echo "=== Building proto for native"
-	cd src-proto && cargo build --release --features client,uniffi
+	cd src-proto && cargo build --release --features uniffi
 
 proto: proto-wasm proto-native
 
@@ -50,7 +51,7 @@ ldap: $(call GO_SRC,src-ldap) proto-native
 
 wasm: $(call RUST_SRC,src-proto)
 	@echo "=== Building WASM package"
-	cd src-proto && rm -rf pkg && wasm-pack build --target web --release --out-name libidp --features client,tokio
+	cd src-proto && rm -rf pkg && wasm-pack build --target web --release --out-name libidp --features nightly
 	@echo "=== Copying package files"
 	rm -rf static/wasm
 	mkdir -p static
@@ -86,5 +87,9 @@ precommit:
 docker:
 	cd src-idp && rm -rf .sqlx && cargo sqlx prepare
 	docker compose build
+
+update:
+	cd src-idp && cargo update
+	cd src-proto && cargo update
 
 postinstall: wasm fmt

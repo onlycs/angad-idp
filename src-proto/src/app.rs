@@ -1,28 +1,17 @@
-use transit_core::{error, oneof, record, route};
+use std::str::FromStr;
+
+use transit_core::{constvar, error, oneof, record, route};
 
 use crate::{auth::Authentication, error::Denied};
 
+#[constvar]
 pub const DOMAIN_SLUG: &str = "angad-idp";
+
+#[constvar]
 pub const GROUP_SUFFIX_ADMIN: &str = "admin";
+
+#[constvar]
 pub const GROUP_SUFFIX_USER: &str = "member";
-
-#[cfg(feature = "uniffi")]
-#[uniffi::export]
-pub fn domain_slug() -> String {
-    DOMAIN_SLUG.to_string()
-}
-
-#[cfg(feature = "uniffi")]
-#[uniffi::export]
-pub fn group_suffix_admin() -> String {
-    GROUP_SUFFIX_ADMIN.to_string()
-}
-
-#[cfg(feature = "uniffi")]
-#[uniffi::export]
-pub fn group_suffix_user() -> String {
-    GROUP_SUFFIX_USER.to_string()
-}
 
 #[record]
 #[cfg_attr(not(target_family = "wasm"), derive(serde::Deserialize))]
@@ -30,6 +19,24 @@ pub fn group_suffix_user() -> String {
 pub struct Membership {
     pub slug: String,
     pub admin: bool,
+}
+
+impl FromStr for Membership {
+    type Err = snafu::Whatever;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let split = s.trim().rsplitn(2, ":").collect::<Vec<_>>();
+
+        snafu::ensure_whatever!(
+            split.len() == 2 && matches!(split[0], GROUP_SUFFIX_ADMIN | GROUP_SUFFIX_USER),
+            "Must be of form `group:[{GROUP_SUFFIX_ADMIN}|{GROUP_SUFFIX_USER}]"
+        );
+
+        Ok(Self {
+            slug: split[1].trim().to_string(),
+            admin: split[0] == GROUP_SUFFIX_ADMIN,
+        })
+    }
 }
 
 #[record]

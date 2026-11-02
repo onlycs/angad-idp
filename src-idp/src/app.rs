@@ -13,7 +13,7 @@ use transit_core::{InternalError, InternalErrorContext, error};
 use crate::{
     auth::{self, AuthErrorCast},
     authelia,
-    common::{self, SLUG_RE, URI_RE, URL_RE},
+    common::{self, SLUG_RE, URL_RE},
 };
 
 pub(crate) const DOMAIN_NAME: &str = "Angad IdP";
@@ -77,7 +77,7 @@ pub(crate) async fn create_impl(
 
     if let Some(uri) = oidc
         .as_ref()
-        .and_then(|oidc| oidc.redirect_uris.iter().find(|uri| !URI_RE.is_match(uri)))
+        .and_then(|oidc| oidc.redirect_uris.iter().find(|uri| !common::is_uri(uri)))
     {
         return Err(InvalidRedirectUri {
             uri: uri.to_string(),

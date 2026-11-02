@@ -6,7 +6,7 @@ use snafu::{OptionExt, ResultExt};
 use sqlx::PgPool;
 use transit_core::{InternalErrorContext, error};
 
-use crate::{app, common, token, user};
+use crate::{app, authelia::AutheliaToken, common, user};
 
 error! {
     AuthError = Denied;
@@ -40,7 +40,7 @@ pub(crate) async fn authenticate(
 ) -> Result<(), AuthError> {
     match auth {
         Authentication::Token(token) => {
-            let token = token::parse(&token)?;
+            let token = AutheliaToken::parse(&token).await?;
 
             let perms = sqlx::query!(
                 r#"

@@ -7,7 +7,7 @@ import (
 	"syscall"
 
 	"angad.page/idp-ldap/routes"
-	"angad.page/transit/transit"
+	transit "angad.page/transit/transit_ffi"
 	ldap "github.com/vjeantet/ldapserver"
 )
 
@@ -15,7 +15,7 @@ func main() {
 	listen_addr := routes.EnvOrDefault("LISTEN_ADDRESS", "0.0.0.0")
 	listen_port := routes.EnvOrDefault("LISTEN_PORT", "389")
 
-	transit.BeginLogging(transit.LogLevelInfo)
+	transit.BeginLogging(transit.LogLevelTrace)
 	ldap.Logger = log.New(os.Stdout, "[server] ", log.LstdFlags)
 
 	routes.Setup()
