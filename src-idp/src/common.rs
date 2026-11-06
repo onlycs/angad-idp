@@ -20,7 +20,7 @@ macro_rules! regex {
 
 pub(crate) static SLUG_RE: Lazy<Regex> = regex!(r"^[a-z][a-z0-9-]*$");
 pub(crate) static URL_RE: Lazy<Regex> = regex!(r"^https?://[^\s/$.?#].[^\s]*$");
-pub(crate) static USERNAME_RE: Lazy<Regex> = regex!(r"^[a-z_][a-z0-9_-]{0,31}$");
+pub(crate) static USERNAME_RE: Lazy<Regex> = regex!(r"^[a-z_][a-z0-9_]{2,31}$");
 pub(crate) static EMAIL_RE: Lazy<Regex> = regex!(r"^[^\s@]+@[^\s@]+\.[^\s@]+$");
 
 fn env_parse_u16(s: String) -> Result<u16, snafu::Whatever> {

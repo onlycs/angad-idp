@@ -3,7 +3,7 @@ SHELL := bash
 .PHONY: help
 .PHONY: proto proto-wasm proto-native
 .PHONY: ldap wasm api
-.PHONY: fmt postinstall
+.PHONY: fmt postinstall thirdparty
 
 help:
 	@echo "Usage: make [target]"
@@ -53,15 +53,9 @@ wasm: $(call RUST_SRC,src-proto)
 	@echo "=== Building WASM package"
 	cd src-proto && rm -rf pkg && wasm-pack build --target web --release --out-name libidp --features nightly
 	@echo "=== Copying package files"
-	rm -rf static/wasm
+	rm -rf src/wasm
 	mkdir -p static
-	cp -r src-proto/pkg static/wasm
-
-thirdparty/sqlx:
-	@echo "=== Preparing/patching SQLx"
-	cd thirdparty && git clone https://github.com/launchbadge/sqlx
-	cd thirdparty/sqlx && git checkout v0.9.0
-	cd thirdparty/sqlx && cat ../sqlx-join-type-inference.patch | git am -3 --no-gpg-sign
+	cp -r src-proto/pkg src/wasm
 
 api: thirdparty/sqlx $(call RUST_SRC,src-idp)
 	@echo "=== Building the API"
@@ -91,5 +85,8 @@ docker:
 update:
 	cd src-idp && cargo update
 	cd src-proto && cargo update
+
+thirdparty:
+	$(MAKE) -C thirdparty
 
 postinstall: wasm fmt

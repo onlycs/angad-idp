@@ -67,11 +67,16 @@ func HandleError[
 		error
 	},
 	P error,
+	E interface {
+		comparable
+		error
+	},
 ](
-	err error,
+	err E,
 	res *message.LDAPResult,
 ) (*P, bool, bool) {
-	if err == nil {
+	var zero E
+	if err == zero { // nil *UserListFfiError, checked before boxing
 		return nil, false, false
 	}
 
@@ -85,7 +90,6 @@ func HandleError[
 	}
 
 	WriteISE(res)
-
 	return nil, true, true
 }
 

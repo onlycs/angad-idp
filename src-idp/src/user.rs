@@ -81,7 +81,7 @@ pub(crate) async fn check_password(
     Ok(())
 }
 
-#[tracing::instrument(skip(pg))]
+#[tracing::instrument(ret, err, skip(auth, pg))]
 pub(crate) async fn list(
     auth: Authentication,
     pg: Arc<PgPool>,
@@ -125,7 +125,7 @@ pub(crate) async fn list(
     Ok(users)
 }
 
-#[tracing::instrument(skip(pg, auth))]
+#[tracing::instrument(ret, err, skip(auth, pg))]
 pub(crate) async fn update(
     UserUpdateRequest {
         auth,
@@ -271,7 +271,7 @@ pub(crate) async fn update(
     })
 }
 
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(ret, err, skip(auth, password, pg))]
 pub(crate) async fn update_password(
     UpdatePasswordRequest { auth, id, password }: UpdatePasswordRequest,
     pg: Arc<PgPool>,
@@ -308,7 +308,7 @@ pub(crate) async fn update_password(
     Ok(())
 }
 
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(ret, err, skip_all)]
 pub(crate) async fn delete(req: UserDeleteRequest, pg: Arc<PgPool>) -> Result<(), UserDeleteError> {
     let uid = match req {
         UserDeleteRequest::DeleteSelf { uid, password } => {

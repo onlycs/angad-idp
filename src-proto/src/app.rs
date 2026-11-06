@@ -1,6 +1,7 @@
 use std::str::FromStr;
 
 use transit_core::{constvar, error, oneof, record, route};
+use xxhash_rust::const_xxh3;
 
 use crate::{auth::Authentication, error::Denied};
 
@@ -12,6 +13,27 @@ pub const GROUP_SUFFIX_ADMIN: &str = "admin";
 
 #[constvar]
 pub const GROUP_SUFFIX_USER: &str = "member";
+
+#[constvar]
+pub const DOMAIN_CLIENT_ID: &str = const {
+    const _DOMAIN_CLIENT_ID_BYTES: [u8; 16] = const {
+        const HEX: &[u8; 16] = b"0123456789abcdef";
+
+        let xxh = const_xxh3::xxh3_64(DOMAIN_SLUG.as_bytes()).to_le_bytes();
+        let mut hex = [0u8; 16];
+        let mut i = 0;
+
+        while i < xxh.len() {
+            hex[2 * i] = HEX[(xxh[i] >> 4) as usize];
+            hex[2 * i + 1] = HEX[(xxh[i] & 0x0f) as usize];
+            i += 1;
+        }
+
+        hex
+    };
+
+    unsafe { std::str::from_utf8_unchecked(&_DOMAIN_CLIENT_ID_BYTES) }
+};
 
 #[record]
 #[cfg_attr(not(target_family = "wasm"), derive(serde::Deserialize))]
@@ -40,8 +62,15 @@ impl FromStr for Membership {
 }
 
 #[record]
+pub struct ApplicationOidcSupplied {
+    pub redirect_uris: Vec<String>,
+    pub public: bool,
+}
+
+#[record]
 pub struct ApplicationOidc {
     pub redirect_uris: Vec<String>,
+    pub client_id: String,
     pub public: bool,
 }
 
@@ -54,9 +83,17 @@ pub struct Application {
 }
 
 #[record]
+pub struct ApplicationSupplied {
+    pub slug: String,
+    pub name: String,
+    pub url: String,
+    pub oidc: Option<ApplicationOidcSupplied>,
+}
+
+#[record]
 pub struct ApplicationCreateRequest {
     pub auth: Authentication,
-    pub app: Application,
+    pub app: ApplicationSupplied,
 }
 
 #[record]
@@ -77,7 +114,7 @@ pub enum ApplicationPublicUpdate {
 #[oneof]
 pub enum ApplicationOidcUpdate {
     Keep,
-    Create(ApplicationOidc),
+    Create(ApplicationOidcSupplied),
     Modify {
         redirect_uris: Option<Vec<String>>,
         public: ApplicationPublicUpdate,

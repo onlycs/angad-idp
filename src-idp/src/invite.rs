@@ -113,7 +113,7 @@ pub(crate) async fn create_impl(
         .body(
             include_str!("../templates/invite-email-template.html").replace(
                 "{{invite_url}}",
-                format!("{}/invite?token={token}", *common::FRONTEND_URL).as_str(),
+                format!("{}invite?token={token}", *common::FRONTEND_URL).as_str(),
             ),
         )
         .context(TransitErrorContext!(EmailSend))?;
@@ -131,7 +131,7 @@ pub(crate) async fn create_impl(
     })
 }
 
-#[tracing::instrument(skip(pg, auth))]
+#[tracing::instrument(ret, err, skip(auth, pg))]
 pub(crate) async fn create(
     InviteCreateRequest {
         auth,
@@ -148,7 +148,7 @@ pub(crate) async fn create(
     create_impl(email, memberships, parse_expiry(exp)?, &pg).await
 }
 
-#[tracing::instrument(skip(pg, auth))]
+#[tracing::instrument(ret, err, skip(auth, pg))]
 pub(crate) async fn list(
     auth: Authentication,
     pg: Arc<PgPool>,
@@ -192,7 +192,7 @@ pub(crate) async fn list(
     Ok(invites)
 }
 
-#[tracing::instrument(skip(pg, auth))]
+#[tracing::instrument(ret, err, skip(auth, pg))]
 pub(crate) async fn update(
     InviteUpdateRequest {
         auth,
@@ -282,7 +282,7 @@ pub(crate) async fn update(
     })
 }
 
-#[tracing::instrument(skip(pg, auth))]
+#[tracing::instrument(ret, err, skip(auth, pg))]
 pub(crate) async fn delete(
     InviteDeleteRequest { auth, id }: InviteDeleteRequest,
     pg: Arc<PgPool>,
@@ -307,7 +307,7 @@ pub(crate) async fn delete(
     Ok(())
 }
 
-#[tracing::instrument(skip(token, password))]
+#[tracing::instrument(ret, err, skip(token, password, pg))]
 pub(crate) async fn redeem(
     InviteUseRequest {
         token,
@@ -338,7 +338,7 @@ pub(crate) async fn redeem(
     .context(InternalErrorContext!(via(display), common::ERROR_DB))?
     .context(NoInvite)?;
 
-    if invite.expiry > Utc::now() {
+    if invite.expiry < Utc::now() {
         return Err(InviteExpired.into());
     }
 

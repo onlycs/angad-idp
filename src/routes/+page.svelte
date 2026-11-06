@@ -1,25 +1,51 @@
+<script lang="ts" module>
+    export type Query = { kind: InlineNotificationProps["kind"]; message: string } | string;
+    type StrictQuery = { kind: InlineNotificationProps["kind"]; message: string };
+
+    export const query = {
+        encode(q: Query): URLSearchParams {
+            if (typeof q === "string") q = { kind: "error", message: q };
+
+            const params = new URLSearchParams();
+            params.set("kind", b64url.encode(q.kind ?? "error"));
+            params.set("message", b64url.encode(q.message));
+            return params;
+        },
+
+        decode(params: URLSearchParams): StrictQuery | null {
+            const kind = params.get("kind");
+            const message = params.get("message");
+            if (!kind || !message) return null;
+
+            const kind_decode = b64url.decode(kind);
+            const message_decode = b64url.decode(message);
+            if (kind_decode.isErr() || message_decode.isErr()) return null;
+
+            return {
+                kind: kind_decode.value as any,
+                message: message_decode.value,
+            };
+        },
+    };
+</script>
+
 <script lang="ts">
-    import {
-        Header,
-        Heading,
-        Tile,
-        Text,
-        Button,
-        ActionSet,
-        InlineNotification,
-    } from "carbon-components-svelte";
+    import { Button, InlineNotification } from "carbon-components-svelte";
     import { ArrowRight } from "carbon-icons-svelte";
     import oauth2 from "$lib/oauth2";
-    import { goto } from "$app/navigation";
-    import { onMount } from "svelte";
-    import { cn } from "$lib";
+    import { afterNavigate, goto } from "$app/navigation";
+    import Flow from "$lib/components/Flow.svelte";
+    import type { InlineNotificationProps } from "carbon-components-svelte/src/Notification/InlineNotification.svelte";
+    import { b64url } from "$lib/encoding";
+    import { clear_query } from "$lib/routing.svelte";
+    import Header from "$lib/components/Header.svelte";
 
     const lstate = oauth2.persist.login();
     const token = oauth2.persist.token();
-    let mode = $state<string | true | null>(null);
+    let mode = $state<StrictQuery | "loading" | "idle">("idle");
 
-    async function to_app() {
-        await goto("/app", { replaceState: true });
+    async function to_apps() {
+        await goto("/apps", { replaceState: true });
     }
 
     async function login() {
@@ -30,59 +56,74 @@
         };
 
         const url = oauth2.login_redirect(ch);
-        location.href = url.toString();
+        setTimeout(() => {
+            location.href = url.toString();
+        }, 1500);
     }
 
-    onMount(() => {
+    afterNavigate(() => {
         (async () => {
-            if (token.value) return await to_app();
+            const params = new URLSearchParams(location.search);
+            clear_query();
 
-            const login = lstate.value;
-            if (!login) return;
+            const q = query.decode(params);
+            mode = q ?? "idle";
+
+            if (token.exists()) return await to_apps();
+
+            const _lstate = lstate.value;
+            if (!_lstate) return;
+            const login = { ..._lstate };
             lstate.value = null;
-            mode = true;
+            mode = "loading";
 
-            const tokens = await oauth2.handle_callback(
-                new URLSearchParams(location.search),
-                login,
-            );
+            const tokens = await oauth2.handle_callback(params, login);
 
             if (tokens.isErr()) {
-                mode = tokens.error;
+                mode = { kind: "error", message: tokens.error };
                 return;
             }
 
             token.value = tokens.value;
-            await to_app();
+            await to_apps();
         })();
     });
 </script>
 
-<Header companyName="Angad" platformName="IdP" />
+{#if !token.exists()}
+    <Header {token} landing />
 
-<main id="login">
-    <Tile class="panel">
-        <Heading class="title" type="expressive-heading-04">Log in</Heading>
-        <Text class={cn("helper", typeof mode !== "string" && "pad")} color="helper">
-            Use your Angad Auth account to access this site.
-        </Text>
+    <main id="login">
+        <Flow
+            heading="Log in"
+            helper="Use your Angad Auth account to access this site."
+            padded={typeof mode !== "object"}
+        >
+            {#snippet buttons()}
+                <Button kind="ghost" disabled={mode === "loading"}>I forgot my password</Button>
+                <Button icon={ArrowRight} onclick={login} loading={mode === "loading"}>
+                    Log in
+                </Button>
+            {/snippet}
 
-        {#if typeof mode === "string"}
-            <InlineNotification
-                class="error"
-                kind="error"
-                title="Something went wrong:"
-                subtitle={mode}
-                on:close={() => (mode = null)}
-            />
-        {/if}
-
-        <ActionSet class="actions" size="lg">
-            <Button kind="ghost" disabled={mode === true}>I forgot my password</Button>
-            <Button icon={ArrowRight} onclick={login} loading={mode === true}>Log in</Button>
-        </ActionSet>
-    </Tile>
-</main>
+            {#if typeof mode === "object"}
+                <InlineNotification
+                    kind={mode.kind}
+                    title={{
+                        error: "Something went wrong: ",
+                        info: "Note: ",
+                        "info-square": "Note: ",
+                        success: "Success",
+                        warning: "Warning: ",
+                        "warning-alt": "Warning: ",
+                    }[mode.kind ?? "error"]}
+                    subtitle={mode.message}
+                    on:close={() => (mode = "idle")}
+                />
+            {/if}
+        </Flow>
+    </main>
+{/if}
 
 <style>
     @reference "tailwindcss";
@@ -91,31 +132,5 @@
         @apply flex items-center justify-center;
         @apply h-screen w-screen;
         @apply select-none;
-    }
-
-    #login :global(.error) {
-        @apply mx-4;
-
-        width: auto;
-    }
-
-    #login :global(.panel) {
-        @apply w-104 p-0;
-    }
-
-    #login :global(.panel .title) {
-        @apply mt-4 mb-1 ml-4;
-    }
-
-    #login :global(.panel .helper) {
-        @apply ml-4;
-    }
-
-    #login :global(.panel .helper.pad) {
-        @apply mb-14;
-    }
-
-    #login :global(.actions) {
-        @apply mt-6;
     }
 </style>

@@ -34,3 +34,19 @@ export const b64url = {
         )();
     },
 };
+
+export const sha1 = {
+    async encodeUpper(value: string): Promise<string> {
+        const data = new TextEncoder().encode(value);
+        const hash = await crypto.subtle.digest("SHA-1", data);
+
+        return Array.from(new Uint8Array(hash))
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join("")
+            .toUpperCase();
+    },
+
+    async encodeLower(value: string): Promise<string> {
+        return (await sha1.encodeUpper(value)).toLowerCase();
+    },
+};

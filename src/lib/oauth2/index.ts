@@ -1,10 +1,11 @@
 import { b64url } from "$lib/encoding";
-import { fetch_safe } from "$lib/fetch";
+import { fetch_safe } from "$lib/network.svelte";
+import * as persist from "$lib/oauth2/persists.svelte";
+import { domain_client_id } from "$lib/wasm";
 import { Err, Ok, Result } from "neverthrow";
-import * as persist from "./persists";
 
-const CLIENT_ID = "980977952d8752e2"; // equivalent to hex::encode(xxhash3_64("angad-idp").to_le_bytes()) but I'm too lazy to actually write any of those functions.
-const AUTHELIA_URL = "https://auth.dev.angad.page";
+const CLIENT_ID = domain_client_id();
+export const AUTHELIA_URL = "https://auth.dev.angad.page";
 
 export interface UserInfo {
     sub: string;
@@ -23,7 +24,6 @@ export interface LoginState {
 export interface AutheliaToken {
     tokens: {
         access: string;
-        refresh: string;
         id: string;
     };
     exp: number;
@@ -47,8 +47,8 @@ export function login_redirect(sv: { challenge: string; state: string }): URL {
     url.search = new URLSearchParams({
         client_id: CLIENT_ID,
         response_type: "code",
-        redirect_uri: window.location.origin,
-        scope: "openid profile email groups uid offline_access",
+        redirect_uri: `${window.location.origin}/`,
+        scope: "openid profile email groups uid",
         state: sv.state,
         code_challenge: sv.challenge,
         code_challenge_method: "S256",
@@ -63,7 +63,6 @@ interface TokenResponse {
     expires_in: number;
     scope: string;
     id_token: string;
-    refresh_token: string;
 }
 
 interface TokenError {
@@ -83,6 +82,10 @@ async function handle_callback(
     p: URLSearchParams,
     sv: LoginState,
 ): Promise<Result<AutheliaToken, string>> {
+    if (p.get("error")) {
+        return new Err(`${p.get("error")}: ${p.get("error_description")}`);
+    }
+
     if (p.get("state") != sv.oauth_state) {
         return new Err("state mismatch");
     }
@@ -99,7 +102,7 @@ async function handle_callback(
         body: new URLSearchParams({
             grant_type: "authorization_code",
             code: p.get("code") ?? "",
-            redirect_uri: window.location.origin,
+            redirect_uri: `${window.location.origin}/`,
             client_id: CLIENT_ID,
             code_verifier: sv.pkce_verifier,
         }),
@@ -125,12 +128,11 @@ async function handle_callback(
     return new Ok({
         tokens: {
             access: tokens.access_token,
-            refresh: tokens.refresh_token,
             id: tokens.id_token,
         },
         exp: Date.now() + tokens.expires_in * 1000,
         user: res2.value.json,
-    } as AutheliaToken);
+    });
 }
 
 export default {

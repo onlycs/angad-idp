@@ -33,9 +33,6 @@ func Bind(w ldapserver.ResponseWriter, m *ldapserver.Message) {
 
 	name := string(dn.RDNs[0].Attributes[0].Value)
 
-	fmt.Print("name ")
-	fmt.Println(name)
-
 	if name == "$service" {
 		pass := r.AuthenticationSimple().String()
 		res_err := proto.RouteIntegrationAuthorize(Api, proto.IntegrationAuthorizeRequest{
@@ -59,11 +56,8 @@ func Bind(w ldapserver.ResponseWriter, m *ldapserver.Message) {
 		Password:        r.AuthenticationSimple().String(),
 	})
 
-	fmt.Printf("outer: %T\n", errors.Unwrap(res_err))
-
 	if res_err == nil {
 		res.SetResultCode(ldapserver.LDAPResultSuccess)
-
 		w.Write(res)
 		return
 	}

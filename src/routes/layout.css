@@ -3,7 +3,10 @@
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 
-html,
-body {
+html {
     @apply min-h-screen min-w-screen;
+}
+
+body {
+    @apply h-full w-full;
 }

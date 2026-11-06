@@ -11,9 +11,15 @@ export class Persisted<T> {
         this.value = raw !== null ? (JSON.parse(raw) as T) : initial;
         $effect.root(() => {
             $effect(() => {
-                storage.setItem(this.key, JSON.stringify(this.value));
+                if (this.value == null) storage.removeItem(this.key);
+                else storage.setItem(this.key, JSON.stringify(this.value));
             });
         });
+    }
+
+    clear() {
+        this.storage.removeItem(this.key);
+        this.value = null!;
     }
 }
 

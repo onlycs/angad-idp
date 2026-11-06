@@ -10,8 +10,8 @@ use std::{
 use chrono::{TimeDelta, Utc};
 use idp_proto::{
     app::{
-        Application, ApplicationCreate, ApplicationCreateError, ApplicationDelete, ApplicationList,
-        ApplicationOidc, ApplicationUpdate, Membership,
+        ApplicationCreate, ApplicationCreateError, ApplicationDelete, ApplicationList,
+        ApplicationOidcSupplied, ApplicationSupplied, ApplicationUpdate, Membership,
     },
     integration::{
         IntegrationAuthorize, IntegrationCreate, IntegrationDelete, IntegrationList,
@@ -24,7 +24,9 @@ use snafu::{Location, ResultExt, Snafu};
 use sqlx::PgPool;
 use tokio::fs;
 use tracing::info;
-use tracing_subscriber::{filter::Targets, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{
+    filter::Targets, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt,
+};
 use transit_server::{ServeOptions, router::Router};
 use transit_tcp::TransitTcp;
 use transit_tls::{
@@ -47,9 +49,11 @@ fn init_logger() {
     #[cfg(debug_assertions)]
     const LOG_LEVEL: tracing::Level = tracing::Level::DEBUG;
     #[cfg(not(debug_assertions))]
-    const LOG_LEVEL: tracing::Level = tracing::Level::TRACE;
+    const LOG_LEVEL: tracing::Level = tracing::Level::INFO;
 
-    let fmt = tracing_subscriber::fmt::layer().pretty();
+    let fmt = tracing_subscriber::fmt::layer()
+        .pretty()
+        .with_span_events(FmtSpan::CLOSE);
 
     let filter = Targets::new()
         .with_default(LOG_LEVEL)
@@ -129,11 +133,11 @@ pub enum StartupError {
 
 async fn setup_domain(pg: &PgPool) -> Result<(), DomainSetupError> {
     match app::create_impl(
-        Application {
+        ApplicationSupplied {
             slug: app::DOMAIN_SLUG.to_string(),
             name: app::DOMAIN_NAME.to_string(),
             url: format!("{}", *common::FRONTEND_URL),
-            oidc: Some(ApplicationOidc {
+            oidc: Some(ApplicationOidcSupplied {
                 redirect_uris: vec![format!("{}", *common::FRONTEND_URL)],
                 public: true,
             }),
@@ -184,6 +188,7 @@ async fn main() -> Result<(), StartupError> {
     sqlx::migrate!().run(&pool).await.context(MigrateSnafu)?;
 
     setup_domain(&pool).await.context(DomainSetupSnafu)?;
+    authelia::regenerate(&pool).await;
 
     let router = Router::new(pool)
         // Application CRUD

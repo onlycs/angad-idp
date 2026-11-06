@@ -45,7 +45,7 @@ pub(crate) async fn create_impl(
     Ok(IntegrationCreateResponse { id, key })
 }
 
-#[tracing::instrument(skip(pg))]
+#[tracing::instrument(err, skip(auth, pg))]
 pub(crate) async fn create(
     IntegrationCreateRequest { auth, name, access }: IntegrationCreateRequest,
     pg: Arc<PgPool>,
@@ -57,7 +57,7 @@ pub(crate) async fn create(
     create_impl(cuid2::cuid(), name, access, &pg).await
 }
 
-#[tracing::instrument(skip(pg))]
+#[tracing::instrument(ret, err, skip(auth, pg))]
 pub(crate) async fn list(
     auth: Authentication,
     pg: Arc<PgPool>,
@@ -92,7 +92,7 @@ pub(crate) async fn list(
         .collect())
 }
 
-#[tracing::instrument(skip(pg))]
+#[tracing::instrument(ret, err, skip(key, pg))]
 pub(crate) async fn authorize(
     IntegrationAuthorizeRequest { key, level }: IntegrationAuthorizeRequest,
     pg: Arc<PgPool>,
@@ -104,7 +104,7 @@ pub(crate) async fn authorize(
     Ok(())
 }
 
-#[tracing::instrument(skip(pg, auth))]
+#[tracing::instrument(err, skip(auth, pg))]
 pub(crate) async fn update(
     IntegrationUpdateRequest {
         auth,
@@ -173,7 +173,7 @@ pub(crate) async fn update(
     })
 }
 
-#[tracing::instrument(skip(pg, auth))]
+#[tracing::instrument(ret, err, skip(auth, pg))]
 pub(crate) async fn delete(
     IntegrationDeleteRequest { auth, id }: IntegrationDeleteRequest,
     pg: Arc<PgPool>,

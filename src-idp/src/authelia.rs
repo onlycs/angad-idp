@@ -1,6 +1,7 @@
 use std::{io, path::PathBuf, str::FromStr};
 
 use askama::Template;
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{TimeZone, Utc};
 use ed25519_dalek::{
     SigningKey,
@@ -8,18 +9,19 @@ use ed25519_dalek::{
 };
 use getrandom::{SysRng, rand_core::UnwrapErr};
 use idp_proto::{
-    app::{DOMAIN_SLUG, Membership},
+    app::{GROUP_SUFFIX_ADMIN, GROUP_SUFFIX_USER, Membership},
     auth::AccessLevel,
     error::Denied,
     integration::{INTERNAL_INTEGRATION_ID, INTERNAL_INTEGRATION_NAME},
 };
-use jsonwebtoken::{Algorithm, DecodingKey, Validation};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, crypto};
 use rsa::{
     RsaPrivateKey,
     pkcs8::{EncodePrivateKey as RsaEncode, LineEnding},
     rand_core::OsRng,
 };
 use serde::Deserialize;
+use serde_yaml::Value;
 use snafu::{Location, OptionExt, ResultExt, Snafu};
 use sqlx::types::Json;
 use tokio::{fs, io::AsyncWriteExt};
@@ -27,6 +29,7 @@ use tracing::{error, info};
 use transit_core::InternalError;
 
 use crate::{
+    app,
     auth::AuthError,
     common::{self, AUTHELIA_URL, FRONTEND_URL, PgRef},
     integration,
@@ -57,13 +60,7 @@ mod filters {
             .to_string()
             .lines()
             .enumerate()
-            .map(|(n, line)| {
-                if n == 0 {
-                    line.to_string()
-                } else {
-                    format!("{}{line}", "  ".repeat(indent))
-                }
-            })
+            .map(|(n, line)| format!("{}{line}", "  ".repeat(indent * n.min(1))))
             .join("\n"))
     }
 }
@@ -100,6 +97,13 @@ pub(crate) enum AutheliaError {
         location: Location,
     },
 
+    #[snafu(display("At {location}: Failed to read authelia's yaml\n{source}"))]
+    AutheliaRead {
+        source: io::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
     #[snafu(display("At {location}: Failed to read `{path:?}`\n{source}"))]
     FileRead {
         path: PathBuf,
@@ -108,9 +112,8 @@ pub(crate) enum AutheliaError {
         location: Location,
     },
 
-    #[snafu(display("At {location}: Failed to parse yaml from `{path:?}`\n{source}"))]
+    #[snafu(display("At {location}: Failed to parse authelia's yaml\n{source}"))]
     ConfigParse {
-        path: PathBuf,
         source: serde_yaml::Error,
         #[snafu(implicit)]
         location: Location,
@@ -150,9 +153,35 @@ pub(crate) enum AutheliaError {
         location: Location,
     },
 
-    #[snafu(display("At {location}: Failed to decode JWT\n{source}"))]
-    JwtDecode {
+    #[snafu(display("At {location}: Malformed or invalid JWT"))]
+    JwtMalformed {
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("At {location}: JWT signature or algorithm mismatch"))]
+    JwtInvalid {
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("At {location}: Failed to verify JWT\n{source}"))]
+    JwtVerify {
         source: jsonwebtoken::errors::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("At {location}: Base64 decode error\n{source}"))]
+    Base64Decode {
+        source: base64::DecodeError,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("At {location}: JSON decode error\n{source}"))]
+    JsonDecode {
+        source: serde_json::Error,
         #[snafu(implicit)]
         location: Location,
     },
@@ -186,7 +215,7 @@ impl snafu::IntoError<AuthError> for AutheliaSnafu {
 
     fn into_error(self, source: Self::Source) -> AuthError {
         match source {
-            AutheliaError::JwtDecode { .. }
+            AutheliaError::JwtMalformed { .. }
             | AutheliaError::InvalidClientId { .. }
             | AutheliaError::InvalidIat { .. } => Denied.into(),
             _ => InternalError!(ctx(source), common::ERROR_GENERIC).into(),
@@ -337,22 +366,18 @@ pub(crate) async fn regenerate(pg: impl PgRef) {
         .await
         .context(DbSnafu)?;
 
-        let path = &*common::AUTHELIA_CONFIG_DIR;
-        let config = path.join("configuration.yml");
+        let dir = &*common::AUTHELIA_CONFIG_DIR;
+        let path = dir.join("configuration.yml");
 
-        let rsa = pem(path.join("rsa2048.pem"), make_rsa).await?;
-        let ed25519 = pem(path.join("ed25519.pem"), make_ed25519).await?;
+        let rsa = pem(dir.join("rsa2048.pem"), make_rsa).await?;
+        let ed25519: String = pem(dir.join("ed25519.pem"), make_ed25519).await?;
 
-        let integration_key = if config.exists() && config.is_file() {
-            let contents = fs::read_to_string(&config).await.context(FileReadSnafu {
-                path: config.clone(),
-            })?;
+        let integration_key = if path.exists() && path.is_file() {
+            let contents = fs::read_to_string(&path).await.context(AutheliaReadSnafu)?;
+            let parsed = serde_yaml::from_str::<Value>(&contents).context(ConfigParseSnafu)?;
 
-            let yaml = serde_yaml::to_value(&contents).context(ConfigParseSnafu {
-                path: config.clone(),
-            })?;
-
-            yaml.get("authentication_backend")
+            parsed
+                .get("authentication_backend")
                 .context(MissingConfigKeySnafu)?
                 .get("ldap")
                 .context(MissingConfigKeySnafu)?
@@ -389,14 +414,12 @@ pub(crate) async fn regenerate(pg: impl PgRef) {
             .create(true)
             .write(true)
             .truncate(true)
-            .open(&config)
+            .open(&path)
             .await
-            .context(FileOpenSnafu {
-                path: config.clone(),
-            })?
+            .context(FileOpenSnafu { path: path.clone() })?
             .write_all(render.as_bytes())
             .await
-            .context(FileWriteSnafu { path: config })?;
+            .context(FileWriteSnafu { path })?;
 
         restart().await.context(RestartSnafu)?;
 
@@ -411,6 +434,7 @@ pub(crate) async fn regenerate(pg: impl PgRef) {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct AutheliaToken {
     pub(crate) uid: String,
     pub(crate) memberships: Vec<Membership>,
@@ -420,6 +444,11 @@ pub(crate) struct AutheliaToken {
 impl AutheliaToken {
     pub(crate) async fn parse(token: impl AsRef<str>) -> Result<AutheliaToken, AuthError> {
         async fn _impl(token: impl AsRef<str>) -> Result<AutheliaToken, AutheliaError> {
+            #[derive(Deserialize)]
+            struct RawHeader {
+                alg: String,
+            }
+
             #[derive(Deserialize)]
             struct RawClaims {
                 uid: String,
@@ -433,14 +462,39 @@ impl AutheliaToken {
             v.set_issuer(&[AUTHELIA_URL.as_str()]);
             v.validate_aud = false;
 
-            let key = verify_key().await?;
+            let token = token.as_ref();
 
-            let claims = jsonwebtoken::decode::<RawClaims>(token.as_ref(), &key, &v)
-                .context(JwtDecodeSnafu)?
-                .claims;
+            let (message, sig) = token.rsplit_once('.').context(JwtMalformedSnafu)?;
+            let (header_b64, payload_b64) = message.split_once('.').context(JwtMalformedSnafu)?;
+            snafu::ensure!(!payload_b64.contains('.'), JwtMalformedSnafu);
+
+            let header = serde_json::from_slice::<RawHeader>(
+                &URL_SAFE_NO_PAD
+                    .decode(header_b64)
+                    .context(Base64DecodeSnafu)?,
+            )
+            .context(JsonDecodeSnafu)?;
 
             snafu::ensure!(
-                claims.client_id == common::xxh64_hex(DOMAIN_SLUG),
+                matches!(header.alg.as_str(), "EdDSA" | "Ed25519"),
+                JwtInvalidSnafu
+            );
+
+            let key = verify_key().await?;
+            let valid = crypto::verify(sig, message.as_bytes(), &key, Algorithm::EdDSA)
+                .context(JwtVerifySnafu)?;
+
+            snafu::ensure!(valid, JwtInvalidSnafu);
+
+            let claims = serde_json::from_slice::<RawClaims>(
+                &URL_SAFE_NO_PAD
+                    .decode(payload_b64)
+                    .context(Base64DecodeSnafu)?,
+            )
+            .context(JsonDecodeSnafu)?;
+
+            snafu::ensure!(
+                claims.client_id == common::xxh64_hex(app::DOMAIN_SLUG),
                 InvalidClientIdSnafu {
                     found: claims.client_id
                 }
@@ -460,6 +514,20 @@ impl AutheliaToken {
             })
         }
 
-        _impl(token).await.context(AutheliaSnafu)
+        let res = _impl(token).await;
+        if let Err(e) = &res {
+            error!(
+                "Failed to parse authelia JWT:\n{}",
+                snafu::Report::from_error(e).to_string()
+            )
+        }
+
+        res.context(AutheliaSnafu)
+    }
+
+    pub(crate) fn is_domain_admin(&self) -> bool {
+        self.memberships
+            .iter()
+            .any(|ship| ship.slug == app::DOMAIN_SLUG && ship.admin)
     }
 }

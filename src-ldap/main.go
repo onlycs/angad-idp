@@ -15,7 +15,7 @@ func main() {
 	listen_addr := routes.EnvOrDefault("LISTEN_ADDRESS", "0.0.0.0")
 	listen_port := routes.EnvOrDefault("LISTEN_PORT", "389")
 
-	transit.BeginLogging(transit.LogLevelTrace)
+	transit.BeginLogging(transit.LogLevelInfo)
 	ldap.Logger = log.New(os.Stdout, "[server] ", log.LstdFlags)
 
 	routes.Setup()

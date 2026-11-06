@@ -57,12 +57,12 @@ pub(crate) fn split_roles(memberships: &Vec<Membership>) -> (Vec<String>, Vec<bo
 }
 
 pub(crate) async fn create_impl(
-    Application {
+    ApplicationSupplied {
         slug,
         name,
         url,
         oidc,
-    }: Application,
+    }: ApplicationSupplied,
     pg: &PgPool,
 ) -> Result<ApplicationCreateResponse, ApplicationCreateError> {
     let mut res = ApplicationCreateResponse {
@@ -147,7 +147,7 @@ pub(crate) async fn create_impl(
     Ok(res)
 }
 
-#[tracing::instrument(skip(pg))]
+#[tracing::instrument(err, skip(auth, pg))]
 pub(crate) async fn create(
     ApplicationCreateRequest { auth, app }: ApplicationCreateRequest,
     pg: Arc<PgPool>,
@@ -159,16 +159,36 @@ pub(crate) async fn create(
     create_impl(app, &pg).await
 }
 
-#[tracing::instrument(skip(pg))]
+#[tracing::instrument(ret, err, skip(auth, pg))]
 pub(crate) async fn list(
     auth: Authentication,
     pg: Arc<PgPool>,
 ) -> Result<Vec<Application>, ApplicationListError> {
-    auth::authenticate(auth, AccessLevel::Read, &pg)
-        .await
-        .context(AuthErrorCast::<ApplicationListError>)?;
+    let (allow_all, specific) = match auth {
+        Authentication::Integration(key) => {
+            auth::authenticate_integration(key, AccessLevel::Read, &pg)
+                .await
+                .context(AuthErrorCast::<ApplicationListError>)?;
 
-    let apps = sqlx::query!(
+            (true, vec![])
+        }
+        Authentication::Token(user) => {
+            let token = auth::authenticate_user_any(user, &pg)
+                .await
+                .context(AuthErrorCast::<ApplicationListError>)?;
+
+            (
+                token.is_domain_admin(),
+                token
+                    .memberships
+                    .into_iter()
+                    .map(|it| it.slug)
+                    .collect_vec(),
+            )
+        }
+    };
+
+    let mut qb = sqlx::QueryBuilder::new(
         r#"
         SELECT
             a.slug,
@@ -180,28 +200,47 @@ pub(crate) async fn list(
         LEFT JOIN applications_oidc o
             ON a.slug = o.slug
         "#,
-    )
-    .fetch_all(&*pg)
-    .await
-    .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
+    );
+
+    if !allow_all {
+        qb.push(r#"WHERE a.slug = ANY("#)
+            .push_bind(&specific)
+            .push(")");
+    }
+
+    #[derive(sqlx::FromRow)]
+    struct QueryRes {
+        slug: String,
+        name: String,
+        url: String,
+        redirect_uris: Option<Vec<String>>,
+        public: Option<bool>,
+    }
+
+    let apps = qb
+        .build_query_as::<QueryRes>()
+        .fetch_all(&*pg)
+        .await
+        .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
     Ok(apps
         .into_iter()
         .map(|a| Application {
-            slug: a.slug,
             name: a.name,
             url: a.url,
             oidc: a
                 .redirect_uris
                 .zip_with(a.public, |uris, public| ApplicationOidc {
                     redirect_uris: uris,
+                    client_id: common::xxh64_hex(&a.slug),
                     public,
                 }),
+            slug: a.slug,
         })
         .collect())
 }
 
-#[tracing::instrument(skip(pg, auth))]
+#[tracing::instrument(err, skip(auth, pg))]
 pub(crate) async fn update(
     ApplicationUpdateRequest {
         auth,
@@ -226,7 +265,7 @@ pub(crate) async fn update(
         .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
     let mut res_oidc = sqlx::query_as!(
-        ApplicationOidc,
+        ApplicationOidcSupplied,
         r#"
         SELECT redirect_uris, client_secret_hash IS NULL as "public!: bool"
         FROM applications_oidc
@@ -241,7 +280,7 @@ pub(crate) async fn update(
     let mut res_client_secret = None;
 
     match oidc {
-        ApplicationOidcUpdate::Create(_) if res_oidc.is_some() => {
+        ApplicationOidcUpdate::Create { .. } if res_oidc.is_some() => {
             return Err(ApplicationOidcExists { slug }.into());
         }
 
@@ -391,16 +430,20 @@ pub(crate) async fn update(
 
     Ok(ApplicationUpdateResponse {
         app: Application {
-            slug: slug.clone(),
             name: app_update.name,
             url: app_update.url,
-            oidc: res_oidc,
+            oidc: res_oidc.map(|it| ApplicationOidc {
+                redirect_uris: it.redirect_uris,
+                public: it.public,
+                client_id: common::xxh64_hex(&slug),
+            }),
+            slug,
         },
         client_secret: res_client_secret,
     })
 }
 
-#[tracing::instrument(skip(pg, auth))]
+#[tracing::instrument(ret, err, skip(auth, pg))]
 pub(crate) async fn delete(
     ApplicationDeleteRequest { auth, slug }: ApplicationDeleteRequest,
     pg: Arc<PgPool>,

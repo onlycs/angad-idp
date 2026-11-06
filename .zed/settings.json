@@ -49,6 +49,30 @@
                 }
             }
         },
+        "svelte-language-server": {
+            "initialization_options": {
+                "configuration": {
+                    "svelte": {
+                        "plugin": {
+                            "css": {
+                                "diagnostics": {
+                                    "enable": false
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "vscode-css-language-server": {
+            "settings": {
+                "css": {
+                    "lint": {
+                        "unknownAtRules": "ignore"
+                    }
+                }
+            }
+        },
         "rust-analyzer": {
             "initialization_options": {
                 "check": {

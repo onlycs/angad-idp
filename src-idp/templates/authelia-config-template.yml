@@ -89,8 +89,8 @@ identity_providers:
         rules:
           - policy: two_factor
             subject:
-              - "group:{{ app.slug }}:users"
-              - "group:{{ app.slug }}:admins"
+              - "group:{{ app.slug }}:{{ GROUP_SUFFIX_ADMIN }}"
+              - "group:{{ app.slug }}:{{ GROUP_SUFFIX_USER }}"
       # {% endif %}
       # {% endfor %}
     claims_policies:
