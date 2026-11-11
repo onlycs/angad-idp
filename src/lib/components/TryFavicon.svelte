@@ -1,6 +1,7 @@
 <script lang="ts" generics="P extends Record<string, any>">
     import { type Component } from "svelte";
     import type { ClassValue } from "svelte/elements";
+
     import { Loading } from "carbon-components-svelte";
 
     type Props<P extends Record<string, any>> = {

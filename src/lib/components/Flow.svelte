@@ -1,8 +1,10 @@
 <script lang="ts">
-    import { cn } from "$lib";
-    import { ActionSet, Text, Tile, Heading, Layer } from "carbon-components-svelte";
-    import type { TileProps } from "carbon-components-svelte/src/Tile/Tile.svelte";
     import type { Snippet } from "svelte";
+
+    import { ActionSet, Heading, Layer, Text, Tile } from "carbon-components-svelte";
+    import type { TileProps } from "carbon-components-svelte/src/Tile/Tile.svelte";
+
+    import { cn } from "$lib";
 
     export interface FlowProps extends TileProps {
         heading: string;

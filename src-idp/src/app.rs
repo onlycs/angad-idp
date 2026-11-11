@@ -67,6 +67,7 @@ pub(crate) async fn create_impl(
 ) -> Result<ApplicationCreateResponse, ApplicationCreateError> {
     let mut res = ApplicationCreateResponse {
         client_secret: None,
+        client_id: None,
     };
 
     let name = name.trim();
@@ -109,6 +110,8 @@ pub(crate) async fn create_impl(
     }
 
     if let Some(oidc) = oidc {
+        res.client_id = Some(common::xxh64_hex(&slug));
+
         let client_secret = if oidc.public {
             None
         } else {
@@ -308,7 +311,7 @@ pub(crate) async fn update(
                 hash,
                 oidc.redirect_uris.as_slice()
             )
-            .execute(&*pg)
+            .execute(&mut *tx)
             .await
             .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
@@ -354,15 +357,16 @@ pub(crate) async fn update(
                 UPDATE applications_oidc
                 SET
                     redirect_uris = COALESCE($2, redirect_uris),
-                    client_secret_hash = $3
+                    client_secret_hash = CASE WHEN $4 THEN $3 ELSE client_secret_hash END
                 WHERE
                     slug = $1
                 "#,
                 slug,
                 redirect_uris.as_ref().map(|x| x.as_slice()),
-                hash
+                hash,
+                public != ApplicationPublicUpdate::Keep,
             )
-            .execute(&*pg)
+            .execute(&mut *tx)
             .await
             .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
@@ -387,7 +391,7 @@ pub(crate) async fn update(
                 "#,
                 slug
             )
-            .execute(&*pg)
+            .execute(&mut *tx)
             .await
             .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 

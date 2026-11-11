@@ -32,7 +32,6 @@
           gopls
           uniffi-bindgen-go.packages.${system}.default
 
-          prettier
           bun
           nodejs
 

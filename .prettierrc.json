@@ -2,9 +2,19 @@
     "$schema": "http://json.schemastore.org/prettierrc",
     "tabWidth": 4,
     "plugins": [
-        "prettier-plugin-organize-imports",
+        "@ianvs/prettier-plugin-sort-imports",
         "prettier-plugin-svelte",
         "prettier-plugin-tailwindcss"
+    ],
+    "importOrder": [
+        "(^\\$app)|(^svelte(\\/.*)?$)",
+        "<BUILTIN_MODULES>",
+        "",
+        "^carbon-",
+        "<THIRD_PARTY_MODULES>",
+        "",
+        "^\\$(lib|components|routes)",
+        "^[.]"
     ],
     "tailwindFunctions": ["cn"],
     "printWidth": 100,

@@ -1,8 +1,9 @@
 import { goto } from "$app/navigation";
+
 import type { AutheliaToken, LoginState } from "$lib/oauth2";
 import { persist_session, Persisted, persisted } from "$lib/persist.svelte";
 import { domain_slug, group_suffix_admin, type Authentication, type Denied } from "$lib/wasm";
-import type { Query } from "../../routes/+page.svelte";
+import * as index from "$routes/+page.svelte";
 
 export const login = () => persist_session<LoginState | null>("login", null);
 export const token = () => new PersistedToken();
@@ -74,9 +75,11 @@ export class PersistedToken {
         if (isDenied(item.inner)) await this.leave("Permission denied. Please log in again.");
     }
 
-    private async leave(query?: Query): Promise<never> {
+    private async leave(params?: index.Query): Promise<never> {
         this.clear();
-        await goto("/");
+        if (!params) await goto("/");
+        else await goto(`/${index.query.encode(params).toString()}`);
+
         return new Promise<never>(() => {});
     }
 }

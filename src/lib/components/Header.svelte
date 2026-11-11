@@ -1,6 +1,7 @@
 <script lang="ts">
-    import { AUTHELIA_URL } from "$lib/oauth2";
-    import type { PersistedToken } from "$lib/oauth2/persists.svelte";
+    import type { Snippet } from "svelte";
+    import { innerWidth } from "svelte/reactivity/window";
+
     import {
         Header,
         HeaderAction,
@@ -16,8 +17,9 @@
         SkipToContent,
     } from "carbon-components-svelte";
     import { UserAvatar } from "carbon-icons-svelte";
-    import type { Snippet } from "svelte";
-    import { innerWidth } from "svelte/reactivity/window";
+
+    import { AUTHELIA_URL } from "$lib/oauth2";
+    import type { PersistedToken } from "$lib/oauth2/persists.svelte";
 
     export type HeaderProps = {
         token: PersistedToken;

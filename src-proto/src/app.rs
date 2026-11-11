@@ -98,6 +98,8 @@ pub struct ApplicationCreateRequest {
 
 #[record]
 pub struct ApplicationCreateResponse {
+    /// iff app.oidc was provided
+    pub client_id: Option<String>,
     /// iff app.oidc.public = false
     pub client_secret: Option<String>,
 }

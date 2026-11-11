@@ -61,6 +61,8 @@ export type FixedArray<T, N extends number, R extends T[] = []> = R["length"] ex
     ? R
     : FixedArray<T, N, [...R, T]>;
 
+export type NzArray<T> = [T, ...T[]];
+
 // ---------- Object keys ----------
 
 export type CountKeys<T> = UnionToTuple<keyof T>["length"];

@@ -27,6 +27,9 @@
         },
         "Docker Compose": {
             "tab_size": 2
+        },
+        "Svelte": {
+            "formatter": "prettier"
         }
     },
     "file_types": {

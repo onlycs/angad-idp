@@ -18,7 +18,7 @@ macro_rules! regex {
     };
 }
 
-pub(crate) static SLUG_RE: Lazy<Regex> = regex!(r"^[a-z][a-z0-9-]*$");
+pub(crate) static SLUG_RE: Lazy<Regex> = regex!(r"^[a-z][a-z0-9-]{1,30}[a-z0-9]$");
 pub(crate) static URL_RE: Lazy<Regex> = regex!(r"^https?://[^\s/$.?#].[^\s]*$");
 pub(crate) static USERNAME_RE: Lazy<Regex> = regex!(r"^[a-z_][a-z0-9_]{2,31}$");
 pub(crate) static EMAIL_RE: Lazy<Regex> = regex!(r"^[^\s@]+@[^\s@]+\.[^\s@]+$");
@@ -70,6 +70,10 @@ pub(crate) fn is_uri(s: impl AsRef<str>) -> bool {
     let Ok(u) = Url::parse(s) else { return false };
 
     !u.cannot_be_a_base()
+        && u.fragment().is_none()
+        && u.username().is_empty()
+        && u.password().is_none()
+        && u.scheme() != "file"
 }
 
 macro_rules! static_env {
@@ -220,8 +224,8 @@ static_env!(
 pub(crate) const ERROR_DB: &str = "Error communicating with the database";
 pub(crate) const ERROR_GENERIC: &str = "Unknown internal error";
 
-pub fn generate_secret() -> Result<[u8; 16], InternalError> {
-    let mut buf = [0u8; 16];
+pub fn generate_secret() -> Result<[u8; 32], InternalError> {
+    let mut buf = [0u8; 32];
     getrandom::fill(&mut buf).context(InternalErrorContext!("Could not generate client secret"))?;
 
     Ok(buf)

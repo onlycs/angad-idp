@@ -30,15 +30,17 @@
 </script>
 
 <script lang="ts">
-    import { Button, InlineNotification } from "carbon-components-svelte";
-    import { ArrowRight } from "carbon-icons-svelte";
-    import oauth2 from "$lib/oauth2";
     import { afterNavigate, goto } from "$app/navigation";
-    import Flow from "$lib/components/Flow.svelte";
+
+    import { Button, InlineNotification } from "carbon-components-svelte";
     import type { InlineNotificationProps } from "carbon-components-svelte/src/Notification/InlineNotification.svelte";
-    import { b64url } from "$lib/encoding";
-    import { clear_query } from "$lib/routing.svelte";
+    import { ArrowRight } from "carbon-icons-svelte";
+
+    import Flow from "$lib/components/Flow.svelte";
     import Header from "$lib/components/Header.svelte";
+    import { b64url } from "$lib/encoding";
+    import oauth2 from "$lib/oauth2";
+    import { clear_query } from "$lib/routing.svelte";
 
     const lstate = oauth2.persist.login();
     const token = oauth2.persist.token();

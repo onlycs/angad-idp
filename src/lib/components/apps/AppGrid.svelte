@@ -11,11 +11,12 @@
         ToolbarSearch,
     } from "carbon-components-svelte";
     import { Cube, Launch, SortAscending, SortDescending } from "carbon-icons-svelte";
+    import { Fzf } from "fzf";
+
     import { cn } from "$lib";
     import TryFavicon from "$lib/components/TryFavicon.svelte";
     import oauth2 from "$lib/oauth2";
     import { type Application } from "$lib/wasm";
-    import { Fzf } from "fzf";
 
     const token = oauth2.persist.token();
     const {
@@ -65,7 +66,7 @@
                         icon={sort_abc ? SortDescending : SortAscending}
                         on:click={() => (sort_abc = !sort_abc)}
                     />
-                    <Button>Create Application</Button>
+                    <Button on:click={oncreate}>Create Application</Button>
                 </ToolbarContent>
             </Toolbar>
         {/if}

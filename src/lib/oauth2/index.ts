@@ -1,8 +1,9 @@
+import { Err, Ok, Result } from "neverthrow";
+
 import { b64url } from "$lib/encoding";
 import { fetch_safe } from "$lib/network.svelte";
 import * as persist from "$lib/oauth2/persists.svelte";
 import { domain_client_id } from "$lib/wasm";
-import { Err, Ok, Result } from "neverthrow";
 
 const CLIENT_ID = domain_client_id();
 export const AUTHELIA_URL = "https://auth.dev.angad.page";

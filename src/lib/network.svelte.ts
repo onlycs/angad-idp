@@ -1,7 +1,9 @@
+import { onMount } from "svelte";
+
+import { Err, Ok, Result, ResultAsync } from "neverthrow";
+
 import { sha1 } from "$lib/encoding";
 import { Transit } from "$lib/wasm";
-import { Err, Ok, Result, ResultAsync } from "neverthrow";
-import { onMount } from "svelte";
 
 const IDP_URL = "wss://idp.dev.angad.page/api";
 

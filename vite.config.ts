@@ -1,7 +1,7 @@
+import { optimizeComponents, optimizeCss, optimizeImports } from "carbon-preprocess-svelte";
 import adapter from "@sveltejs/adapter-static";
 import { sveltekit } from "@sveltejs/kit/vite";
 import tailwindcss from "@tailwindcss/vite";
-import { optimizeComponents, optimizeCss, optimizeImports } from "carbon-preprocess-svelte";
 import { defineConfig } from "vite";
 
 export default defineConfig({
@@ -11,10 +11,12 @@ export default defineConfig({
             adapter: adapter(),
             alias: {
                 $lib: "./src/lib",
+                $routes: "./src/routes",
             },
             compilerOptions: {
                 runes: ({ filename }) =>
                     filename.split("/").includes("node_modules") ? undefined : true,
+                experimental: { async: true },
             },
             preprocess: [optimizeImports()],
         }),
