@@ -3,9 +3,19 @@ import { onMount } from "svelte";
 import { Err, Ok, Result, ResultAsync } from "neverthrow";
 
 import { sha1 } from "$lib/encoding";
+import type { PersistedToken } from "$lib/oauth2/persists.svelte";
 import { Transit } from "$lib/wasm";
 
 const IDP_URL = "wss://idp.dev.angad.page/api";
+
+export type AnyTransitError = {
+    display(): string;
+    report(): unknown;
+    inner?: {
+        tag: string;
+        source: unknown;
+    };
+};
 
 export async function fetch_safe(req: URL | string | Request, init?: RequestInit) {
     return ResultAsync.fromThrowable(
@@ -61,18 +71,38 @@ export async function haveibeenpwned(password: string) {
 
 type TransitResult<T, E> = { Ok: T } | { Err: E };
 
+export type ApiResult<T, E> = Result<T, E | { display(): string; report(): unknown }>;
+
 let _instance = $state<Transit>();
-let _h = $state<(() => void)[]>([]);
+let _lck = $state(false);
+let _waiters = $state<{ res: () => void; rej: (e: unknown) => void }[]>([]);
+
 export class TransitWrapper {
     constructor() {
         onMount(() => {
-            (async () => {
-                if (!_instance) {
-                    _instance = await Transit.connect(IDP_URL);
-                    _h.forEach((it) => it());
-                }
-            })();
+            this.tryInit();
         });
+    }
+
+    private async tryInit(throwing = false) {
+        if (_lck) return await new Promise<void>((res, rej) => _waiters.push({ res, rej }));
+
+        if (!_instance) {
+            _lck = true;
+            try {
+                _instance = await new Promise<Transit>((res, rej) => {
+                    Transit.connect(IDP_URL).then(res).catch(rej);
+                    setTimeout(() => rej("Manual server 10s timeout"), 10_000);
+                });
+                _lck = false;
+                _waiters.forEach((it) => it.res());
+            } catch (e) {
+                _instance = undefined;
+                _lck = false;
+                _waiters.forEach((it) => it.rej(e));
+                if (throwing) throw e;
+            }
+        }
     }
 
     async route<
@@ -82,12 +112,77 @@ export class TransitWrapper {
         f: F,
         req: T,
     ): Promise<
-        ReturnType<F> extends Promise<TransitResult<infer T, infer E>> ? Result<T, E> : never
+        F extends (...args: any[]) => Promise<TransitResult<infer T, infer E>>
+            ? ApiResult<T, E>
+            : never
     > {
-        if (!_instance) await new Promise<void>((res) => _h.push(res));
-        const res = await f(_instance!, req);
-        if ("Err" in res) return new Err(res.Err) as any;
-        else return new Ok(res.Ok) as any;
+        try {
+            if (!_instance) await this.tryInit(true);
+            const res = await f(_instance!, req);
+            if ("Err" in res) return new Err(res.Err) as any;
+            else return new Ok(res.Ok) as any;
+        } catch (e) {
+            return new Err({
+                display: () => "Could not connect to the server. Are you online?",
+                report: () => e,
+            }) as any;
+        }
+    }
+
+    state<
+        Q,
+        F extends (transit: Transit, req: Q) => Promise<TransitResult<unknown, AnyTransitError>>,
+    >(
+        f: F,
+        req: () => Q,
+        token: PersistedToken,
+    ): F extends (...args: any[]) => Promise<TransitResult<infer T, AnyTransitError>>
+        ? ApiState<T>
+        : never {
+        return new ApiState(f as any, req, this, token) as any;
+    }
+}
+
+export class ApiState<T> {
+    private res = $state<T>();
+    private err = $state<string>();
+
+    constructor(
+        private f: (transit: Transit, req: unknown) => Promise<TransitResult<T, AnyTransitError>>,
+        private req: () => unknown,
+        private tr: TransitWrapper,
+        private token: PersistedToken,
+    ) {
+        onMount(() => this.fetch());
+    }
+
+    get response() {
+        return this.res;
+    }
+
+    get error() {
+        return this.err;
+    }
+
+    get loading() {
+        return !this.response && !this.error;
+    }
+
+    clear_error() {
+        this.err = undefined;
+    }
+
+    async fetch() {
+        this.clear_error();
+
+        const res = (await this.tr.route(this.f, this.req())) as ApiResult<T, AnyTransitError>;
+        if (res.isErr()) {
+            await this.token.handle_denied(res.error);
+            console.error(res.error.report());
+            this.err = res.error.display();
+            return;
+        }
+        this.res = res.value;
     }
 }
 

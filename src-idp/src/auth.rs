@@ -1,5 +1,7 @@
+use std::borrow::Borrow;
+
 use idp_proto::{
-    auth::{AccessLevel, Authentication, AuthenticationStrict},
+    auth::{AccessLevel, AuthenticateSelfStrict, Authentication},
     error::Denied,
 };
 use snafu::{OptionExt, ResultExt};
@@ -13,7 +15,7 @@ error! {
     AuthError = Denied;
 }
 
-pub(crate) async fn authenticate_integration(
+pub(crate) async fn authenticate_ikey(
     key: impl AsRef<str>,
     level: AccessLevel,
     pg: &PgPool,
@@ -70,42 +72,38 @@ pub(crate) async fn authenticate_user_admin(
 }
 
 pub(crate) async fn authenticate(
-    auth: Authentication,
+    auth: impl Borrow<Authentication>,
     level: AccessLevel,
     pg: &PgPool,
-) -> Result<(), AuthError> {
-    match auth {
-        Authentication::Token(token) => authenticate_user_admin(token, pg).await.map(|_| ()),
-        Authentication::Integration(key) => authenticate_integration(key, level, pg).await,
+) -> Result<Option<AutheliaToken>, AuthError> {
+    match auth.borrow() {
+        Authentication::Token(token) => authenticate_user_admin(token, pg).await.map(Some),
+        Authentication::Integration(key) => authenticate_ikey(key, level, pg).await.map(|_| None),
     }
 }
 
 pub(crate) async fn authenticate_strict(
-    auth: AuthenticationStrict,
-    level: AccessLevel,
+    auth: impl Borrow<AuthenticateSelfStrict>,
     pg: &PgPool,
 ) -> Result<(), AuthError> {
-    match auth {
-        AuthenticationStrict::Password { uid, password } => {
-            let hashed = sqlx::query_scalar!(
-                r#"
-                SELECT password_hash
-                FROM users
-                WHERE id = $1
-                "#,
-                uid,
-            )
-            .fetch_optional(pg)
-            .await
-            .context(InternalErrorContext!(via(display), common::ERROR_DB))?
-            .context(Denied)?;
+    let AuthenticateSelfStrict { uid, password } = auth.borrow();
 
-            if let Err(_incorrect) = user::verify_password(&hashed, &password) {
-                return Err(Denied.into());
-            }
+    let hashed = sqlx::query_scalar!(
+        r#"
+        SELECT password_hash
+        FROM users
+        WHERE id = $1
+        "#,
+        uid,
+    )
+    .fetch_optional(pg)
+    .await
+    .context(InternalErrorContext!(via(display), common::ERROR_DB))?
+    .context(Denied)?;
 
-            Ok(())
-        }
-        AuthenticationStrict::Integration(key) => authenticate_integration(key, level, pg).await,
+    if let Err(_incorrect) = user::verify_password(&hashed, password) {
+        return Err(Denied.into());
     }
+
+    Ok(())
 }

@@ -1,4 +1,4 @@
-use transit_core::oneof;
+use transit_core::{oneof, record};
 
 #[oneof]
 #[derive(Copy, PartialEq, Eq)]
@@ -13,8 +13,8 @@ pub enum Authentication {
     Integration(String),
 }
 
-#[oneof]
-pub enum AuthenticationStrict {
-    Password { uid: String, password: String },
-    Integration(String),
+#[record]
+pub struct AuthenticateSelfStrict {
+    pub uid: String,
+    pub password: String,
 }

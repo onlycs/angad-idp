@@ -526,8 +526,6 @@ impl AutheliaToken {
     }
 
     pub(crate) fn is_domain_admin(&self) -> bool {
-        self.memberships
-            .iter()
-            .any(|ship| ship.slug == app::DOMAIN_SLUG && ship.admin)
+        self.memberships.iter().any(Membership::is_domain_admin)
     }
 }

@@ -6,7 +6,7 @@
 
     import ValidatedForm from "$lib/components/form/ValidatedForm.svelte";
     import { f, type SourcelessMessage } from "$lib/form";
-    import { mktransit } from "$lib/network.svelte";
+    import { mktransit, type ApiResult } from "$lib/network.svelte";
     import oauth2 from "$lib/oauth2";
     import {
         route_application_create,
@@ -137,8 +137,8 @@
 
     async function submit(submitted: z.output<typeof form.z>) {
         let res:
-            | Result<ApplicationCreateResponse, ApplicationCreateFfiError>
-            | Result<ApplicationUpdateResponse, ApplicationUpdateFfiError>;
+            | ApiResult<ApplicationCreateResponse, ApplicationCreateFfiError>
+            | ApiResult<ApplicationUpdateResponse, ApplicationUpdateFfiError>;
 
         if (!!create) {
             const q: ApplicationCreateRequest = {

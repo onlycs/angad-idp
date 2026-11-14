@@ -43,6 +43,12 @@ pub struct Membership {
     pub admin: bool,
 }
 
+impl Membership {
+    pub fn is_domain_admin(&self) -> bool {
+        self.slug == DOMAIN_SLUG && self.admin
+    }
+}
+
 impl FromStr for Membership {
     type Err = snafu::Whatever;
 

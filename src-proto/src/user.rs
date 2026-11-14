@@ -2,7 +2,7 @@ use transit_core::{error, oneof, record, route};
 
 use crate::{
     app::{Membership, NoApplication},
-    auth::{Authentication, AuthenticationStrict},
+    auth::{AuthenticateSelfStrict, Authentication},
     error::Denied,
     invite::InsecurePassword,
 };
@@ -22,25 +22,24 @@ pub struct CheckPasswordRequest {
     pub password: String,
 }
 
-#[record]
-pub struct UserUpdateRequest {
-    pub auth: Authentication,
-    pub id: String,
-    pub username: Option<String>,
-    pub email: Option<String>,
-    pub memberships: Option<Vec<Membership>>,
-}
-
-#[record]
-pub struct UpdatePasswordRequest {
-    pub auth: AuthenticationStrict,
-    pub id: String,
-    pub password: String,
+#[oneof]
+pub enum UserUpdateRequest {
+    UpdateSelf {
+        auth: AuthenticateSelfStrict,
+        username: Option<String>,
+        email: Option<String>,
+        password: Option<String>,
+    },
+    UpdateOther {
+        auth: Authentication,
+        uid: String,
+        memberships: Vec<Membership>,
+    },
 }
 
 #[oneof]
 pub enum UserDeleteRequest {
-    DeleteSelf { uid: String, password: String },
+    DeleteSelf { auth: AuthenticateSelfStrict },
     DeleteOther { auth: Authentication, uid: String },
 }
 
@@ -52,19 +51,18 @@ error! {
     EmailInUse("Email in use");
     UsernameInUse("Username in use");
     IncorrectPassword("Incorrect password");
+    RemoveOwnDomainAdmin("Cannot remove yourself as a domain admin");
 
     CheckPasswordError = NoUser | IncorrectPassword;
     UserListError = Denied;
     UserSearchError = NoUser | Denied;
-    UserUpdateError = NoUser | InvalidUsername | InvalidEmail | UsernameInUse | EmailInUse | NoApplication | Denied;
-    UpdatePasswordError = NoUser | InsecurePassword | Denied;
+    UserUpdateError = NoUser | InvalidUsername | InvalidEmail | InsecurePassword | UsernameInUse | EmailInUse | NoApplication | RemoveOwnDomainAdmin | Denied;
     UserDeleteError = NoUser | Denied;
 }
 
 route! {
     CheckPassword(CheckPasswordRequest) -> Result<(), CheckPasswordError>;
     UserList(Authentication) -> Result<Vec<User>, UserListError>;
-    UserUpdate(UserUpdateRequest) -> Result<User, UserUpdateError>;
-    UpdatePassword(UpdatePasswordRequest) -> Result<(), UpdatePasswordError>;
+    UserUpdate(UserUpdateRequest) -> Result<(), UserUpdateError>;
     UserDelete(UserDeleteRequest) -> Result<(), UserDeleteError>;
 }

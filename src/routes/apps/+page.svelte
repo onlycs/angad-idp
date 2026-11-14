@@ -1,6 +1,4 @@
 <script lang="ts">
-    import { onMount } from "svelte";
-
     import {
         ConfirmModal,
         Content,
@@ -13,6 +11,7 @@
 
     import AppGrid from "$lib/components/apps/AppGrid.svelte";
     import ModalAppUpdateCreate from "$lib/components/apps/ModalAppUpdateCreate.svelte";
+    import DataGuard from "$lib/components/DataGuard.svelte";
     import DisabledCopyInput from "$lib/components/form/DisabledCopyInput.svelte";
     import Header from "$lib/components/Header.svelte";
     import { mktransit } from "$lib/network.svelte";
@@ -20,74 +19,12 @@
     import { route_application_delete, route_application_list, type Application } from "$lib/wasm";
 
     const token = oauth2.persist.token();
-    const transit = mktransit();
+    const api = mktransit();
 
-    let apps = $state<Application[]>();
-    let error = $state<string>();
-
-    const fake_data: Application[] = [
-        {
-            name: "Radarr",
-            slug: "radarr",
-            url: "https://radarr.angad.page",
-        },
-        {
-            name: "Sonarr",
-            slug: "sonarr",
-            url: "https://sonarr.angad.page",
-        },
-        {
-            name: "Jellyseerr",
-            slug: "jellyseerr",
-            url: "https://jellyseerr.angad.page",
-        },
-        {
-            name: "Jellyfin",
-            slug: "jellyfin",
-            url: "https://jellyfin.angad.page",
-        },
-        {
-            name: "Sabnzbd",
-            slug: "sabnzbd",
-            url: "https://sabnzbd.angad.page",
-        },
-        {
-            name: "Angad Drive",
-            slug: "drive",
-            url: "https://drive.angad.page",
-        },
-        {
-            name: "Immich",
-            slug: "immich",
-            url: "https://immich.angad.page",
-        },
-        {
-            name: "Attendance",
-            slug: "attendance",
-            url: "https://attendance.team2791.org",
-        },
-    ];
-
-    async function fetch() {
-        const res = await transit.route(route_application_list, token.into_api());
-
-        if (res.isErr()) {
-            await token.handle_denied(res.error);
-            error = res.error.display();
-            console.error(res.error.report());
-            return;
-        }
-
-        apps = [...res.value, ...fake_data];
-    }
-
-    onMount(() => fetch());
+    let apps = api.state(route_application_list, () => token.into_api(), token);
 
     let active = $state<Application>();
-    let display_oidc = $state<{ client_id?: string; client_secret?: string }>({
-        client_id: "4",
-        client_secret: "5",
-    });
+    let display_oidc = $state<{ client_id?: string; client_secret?: string }>({});
 
     let wants_create = $state(false);
     let wants_delete = $state(false);
@@ -111,7 +48,7 @@
             return;
         }
 
-        const res = await transit.route(route_application_delete, {
+        const res = await api.route(route_application_delete, {
             auth: token.into_api(),
             slug: app.slug,
         });
@@ -131,7 +68,7 @@
         if (wants_modify) wants_modify = false;
         display_oidc = { client_id, client_secret };
 
-        fetch();
+        apps.fetch();
     }
 </script>
 
@@ -180,23 +117,27 @@
 {/if}
 
 <Content>
-    <div id="apps" class={error ? "error" : undefined}>
-        {#if error}
-            <FullPageError labelText="Oops!" title="Something went wrong" description={error} />
-        {:else if apps}
-            <AppGrid {apps} {ondelete} {oncreate} {onupdate} />
-        {:else}
+    <DataGuard data={apps}>
+        {#snippet loading()}
             <Loading />
-        {/if}
-    </div>
+        {/snippet}
+
+        {#snippet error(error)}
+            <div class="error">
+                <FullPageError labelText="Oops!" title="Something went wrong" description={error} />
+            </div>
+        {/snippet}
+
+        {#snippet success(apps)}
+            <AppGrid {apps} {ondelete} {oncreate} {onupdate} />
+        {/snippet}
+    </DataGuard>
 </Content>
 
 <style>
     @reference "tailwindcss";
 
-    #apps {
-        &.error :global(div:has(svg)) {
-            @apply pb-0!;
-        }
+    .error :global(div:has(svg)) {
+        @apply pb-0!;
     }
 </style>

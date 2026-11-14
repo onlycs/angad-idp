@@ -18,7 +18,7 @@ use idp_proto::{
         IntegrationUpdate,
     },
     invite::{InviteCreate, InviteCreateError, InviteDelete, InviteList, InviteUpdate, InviteUse},
-    user::{CheckPassword, UpdatePassword, UserDelete, UserList, UserUpdate},
+    user::{CheckPassword, UserDelete, UserList, UserUpdate},
 };
 use snafu::{Location, ResultExt, Snafu};
 use sqlx::PgPool;
@@ -212,7 +212,6 @@ async fn main() -> Result<(), StartupError> {
         .route::<CheckPassword, _>(user::check_password)
         .route::<UserList, _>(user::list)
         .route::<UserUpdate, _>(user::update)
-        .route::<UpdatePassword, _>(user::update_password)
         .route::<UserDelete, _>(user::delete)
         .build();
 

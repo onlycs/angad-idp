@@ -66,7 +66,7 @@ error! {
 route! {
     InviteCreate(InviteCreateRequest) -> Result<Invite, InviteCreateError>;
     InviteList(Authentication) -> Result<Vec<Invite>, InviteListError>;
-    InviteUpdate(InviteUpdateRequest) -> Result<Invite, InviteUpdateError>;
+    InviteUpdate(InviteUpdateRequest) -> Result<(), InviteUpdateError>;
     InviteDelete(InviteDeleteRequest) -> Result<(), InviteDeleteError>;
     InviteUse(InviteUseRequest) -> Result<User, InviteUseError>;
 }

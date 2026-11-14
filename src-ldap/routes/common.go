@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	transit "angad.page/transit/transit_ffi"
+	"angad.page/transit/transit"
 	"github.com/go-ldap/ldap/v3"
 	"github.com/lor00x/goldap/message"
 	"github.com/vjeantet/ldapserver"

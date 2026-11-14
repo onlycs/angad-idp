@@ -1,21 +1,14 @@
 <script lang="ts">
     import { afterNavigate, goto } from "$app/navigation";
 
-    import {
-        Button,
-        Form,
-        Header,
-        InlineNotification,
-        OutboundLink,
-        Stack,
-    } from "carbon-components-svelte";
+    import { Button, Form, Header, OutboundLink, Stack } from "carbon-components-svelte";
     import { ArrowRight } from "carbon-icons-svelte";
     import { z } from "zod";
 
     import { cn } from "$lib";
     import Flow from "$lib/components/Flow.svelte";
     import ValidatedForm from "$lib/components/form/ValidatedForm.svelte";
-    import { f, type SourcelessMessage } from "$lib/form";
+    import { f } from "$lib/form";
     import { haveibeenpwned, mktransit } from "$lib/network.svelte";
     import { clear_query } from "$lib/routing.svelte";
     import { route_invite_use } from "$lib/wasm";
@@ -58,7 +51,7 @@
         })
         .build();
 
-    const transit = mktransit();
+    const api = mktransit();
     let token = $state("");
     let error = $state<string>();
     let loading = $state(false);
@@ -72,7 +65,7 @@
         const user = z.username;
         const pass = z.password;
 
-        const res = await transit.route(route_invite_use, {
+        const res = await api.route(route_invite_use, {
             token,
             username: user,
             password: pass,

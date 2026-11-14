@@ -3,18 +3,17 @@ use std::sync::Arc;
 use argon2::{PasswordHasher, PasswordVerifier};
 use idp_proto::{
     app::Membership,
-    auth::{AccessLevel, Authentication, AuthenticationStrict},
+    auth::{AccessLevel, AuthenticateSelfStrict, Authentication},
     invite::InsecurePassword,
     user::*,
 };
 use snafu::prelude::*;
-use sqlx::{PgPool, types::Json};
+use sqlx::PgPool;
 use transit_core::{InternalError, InternalErrorContext, TransitErrorContext};
 
 use crate::{
     app::{self, VerifyErrorCast},
     auth::{self, AuthErrorCast},
-    authelia::AutheliaToken,
     common,
 };
 
@@ -125,205 +124,159 @@ pub(crate) async fn list(
     Ok(users)
 }
 
-#[tracing::instrument(ret, err, skip(auth, pg))]
-pub(crate) async fn update(
-    UserUpdateRequest {
-        auth,
-        id,
-        username,
-        email,
-        memberships,
-    }: UserUpdateRequest,
-    pg: Arc<PgPool>,
-) -> Result<User, UserUpdateError> {
-    let wants_update_self = if let Authentication::Token(token) = &auth {
-        let identity = AutheliaToken::parse(token)
-            .await
-            .context(AuthErrorCast::<UserUpdateError>)?;
+#[tracing::instrument(ret, err, skip(req, pg))]
+pub(crate) async fn update(req: UserUpdateRequest, pg: Arc<PgPool>) -> Result<(), UserUpdateError> {
+    match req {
+        UserUpdateRequest::UpdateOther {
+            auth,
+            uid,
+            mut memberships,
+        } => {
+            let user_token = auth::authenticate(auth, AccessLevel::ReadWrite, &pg)
+                .await
+                .context(AuthErrorCast::<UserUpdateError>)?;
 
-        id == *identity.uid
-    } else {
-        false
-    };
+            snafu::ensure!(
+                user_token.is_none() || memberships.iter().any(Membership::is_domain_admin),
+                RemoveOwnDomainAdmin
+            );
 
-    if !wants_update_self {
-        auth::authenticate(auth, AccessLevel::ReadWrite, &pg)
-            .await
-            .context(AuthErrorCast::<UserUpdateError>)?;
-    }
+            let (slugs, admins) = app::split_and_fix(&mut memberships);
 
-    snafu::ensure!(
-        username
-            .as_ref()
-            .is_none_or(|u| common::USERNAME_RE.is_match(u)),
-        InvalidUsername
-    );
-    snafu::ensure!(
-        email.as_ref().is_none_or(|e| common::EMAIL_RE.is_match(e)),
-        InvalidEmail
-    );
+            app::verify(slugs.as_slice(), &pg)
+                .await
+                .context(VerifyErrorCast::<UserUpdateError>)?;
 
-    let split_roles = memberships.as_ref().map(app::split_roles);
+            let mut tx = pg
+                .begin()
+                .await
+                .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
-    if let Some((slugs, _)) = &split_roles {
-        app::verify(slugs.as_slice(), &pg)
-            .await
-            .context(VerifyErrorCast::<UserUpdateError>)?;
-    }
-
-    let mut tx = pg
-        .begin()
-        .await
-        .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
-
-    let user_update = match sqlx::query!(
-        r#"
-        UPDATE users
-        SET
-            username = COALESCE($2, username),
-            email = COALESCE($3, email),
-            updated_at = now()
-        WHERE
-            id = $1
-        RETURNING username, email
-        "#,
-        id,
-        username,
-        email
-    )
-    .fetch_optional(&mut *tx)
-    .await
-    {
-        Ok(Some(res)) => res,
-        Ok(None) => {
-            return Err(NoUser.into());
-        }
-        Err(sqlx::Error::Database(db)) if db.is_unique_violation() => match db.constraint() {
-            Some("users_username_key") => return Err(UsernameInUse.into()),
-            _ => return Err(EmailInUse.into()),
-        },
-        Err(other) => {
-            return Err(InternalError!(ctx(display other), common::ERROR_DB).into());
-        }
-    };
-
-    if let Some((role_slugs, role_admins)) = split_roles {
-        sqlx::query!(
-            r#"
-            DELETE FROM roles
-            WHERE uid = $1
-            "#,
-            id
-        )
-        .execute(&mut *tx)
-        .await
-        .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
-
-        sqlx::query!(
-            r#"
-            INSERT INTO roles (uid, application, admin)
-            SELECT $1, app, admin
-            FROM UNNEST($2::text[], $3::boolean[]) AS t(app, admin)
-            "#,
-            id,
-            role_slugs.as_slice(),
-            role_admins.as_slice()
-        )
-        .execute(&mut *tx)
-        .await
-        .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
-    }
-
-    let memberships = match memberships {
-        Some(m) => m,
-        None => {
-            sqlx::query_scalar!(
+            match sqlx::query!(
                 r#"
-                SELECT
-                    COALESCE(
-                        JSONB_AGG(
-                            JSONB_BUILD_OBJECT('slug', r.application, 'admin', r.admin)
-                        ),
-                        '[]'::jsonb
-                    ) AS "roles!: Json<Vec<Membership>>"
-                FROM users u
-                LEFT JOIN roles r ON r.uid = u.id
-                WHERE u.id = $1
+                UPDATE users
+                SET updated_at = now()
+                WHERE id = $1
                 "#,
-                id
+                uid,
             )
-            .fetch_one(&mut *tx)
+            .execute(&mut *tx)
             .await
-            .context(InternalErrorContext!(via(display), common::ERROR_DB))?
-            .0
+            {
+                Ok(res) if res.rows_affected() > 0 => {}
+                Ok(_) => return Err(NoUser.into()),
+                Err(sqlx::Error::Database(db)) if db.is_unique_violation() => match db.constraint()
+                {
+                    Some("users_username_key") => return Err(UsernameInUse.into()),
+                    _ => return Err(EmailInUse.into()),
+                },
+                Err(other) => {
+                    return Err(InternalError!(ctx(display other), common::ERROR_DB).into());
+                }
+            };
+
+            sqlx::query!(
+                r#"
+                DELETE FROM roles
+                WHERE uid = $1
+                "#,
+                uid
+            )
+            .execute(&mut *tx)
+            .await
+            .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
+
+            sqlx::query!(
+                r#"
+                INSERT INTO roles (uid, application, admin)
+                SELECT $1, app, admin
+                FROM UNNEST($2::text[], $3::boolean[]) AS t(app, admin)
+                "#,
+                uid,
+                slugs.as_slice(),
+                admins.as_slice()
+            )
+            .execute(&mut *tx)
+            .await
+            .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
+
+            tx.commit()
+                .await
+                .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
+
+            Ok(())
         }
-    };
+        UserUpdateRequest::UpdateSelf {
+            auth,
+            username,
+            email,
+            password,
+        } => {
+            auth::authenticate_strict(&auth, &pg)
+                .await
+                .context(AuthErrorCast::<UserUpdateError>)?;
 
-    tx.commit()
-        .await
-        .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
+            let AuthenticateSelfStrict { uid, .. } = auth;
 
-    Ok(User {
-        id,
-        username: user_update.username,
-        email: user_update.email,
-        memberships,
-    })
-}
+            snafu::ensure!(
+                username
+                    .as_ref()
+                    .is_none_or(|u| common::USERNAME_RE.is_match(u)),
+                InvalidUsername
+            );
+            snafu::ensure!(
+                email.as_ref().is_none_or(|e| common::EMAIL_RE.is_match(e)),
+                InvalidEmail
+            );
 
-#[tracing::instrument(ret, err, skip(auth, password, pg))]
-pub(crate) async fn update_password(
-    UpdatePasswordRequest { auth, id, password }: UpdatePasswordRequest,
-    pg: Arc<PgPool>,
-) -> Result<(), UpdatePasswordError> {
-    auth::authenticate_strict(auth, AccessLevel::ReadWrite, &pg)
-        .await
-        .context(AuthErrorCast::<UpdatePasswordError>)?;
+            let mut update_password = None;
 
-    let user = sqlx::query!(r#"SELECT username, email FROM users WHERE id = $1"#, id)
-        .fetch_optional(&*pg)
-        .await
-        .context(InternalErrorContext!(via(display), common::ERROR_DB))?
-        .context(NoUser)?;
+            if let Some(pw) = password {
+                ensure_password_strength(&pw, &[])?;
+                update_password = Some(hash_password(&pw)?)
+            }
 
-    let hash = hash_password(&password)?;
-
-    ensure_password_strength(&password, &[&user.username, &user.email])?;
-
-    let res = sqlx::query!(
-        r#"
-        UPDATE users
-        SET password_hash = $2, updated_at = now()
-        WHERE id = $1
-        "#,
-        id,
-        hash,
-    )
-    .execute(&*pg)
-    .await
-    .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
-
-    snafu::ensure!(res.rows_affected() > 0, NoUser);
-
-    Ok(())
+            match sqlx::query!(
+                r#"
+                UPDATE users
+                SET
+                    username = COALESCE($2, username),
+                    email = COALESCE($3, email),
+                    password_hash = COALESCE($4, password_hash),
+                    updated_at = now()
+                WHERE
+                    id = $1
+                "#,
+                uid,
+                username,
+                email,
+                update_password
+            )
+            .execute(&*pg)
+            .await
+            {
+                Ok(res) if res.rows_affected() > 0 => Ok(()),
+                Ok(_) => Err(NoUser.into()),
+                Err(sqlx::Error::Database(db)) if db.is_unique_violation() => match db.constraint()
+                {
+                    Some("users_username_key") => Err(UsernameInUse.into()),
+                    _ => Err(EmailInUse.into()),
+                },
+                Err(other) => Err(InternalError!(ctx(display other), common::ERROR_DB).into()),
+            }
+        }
+    }
 }
 
 #[tracing::instrument(ret, err, skip_all)]
 pub(crate) async fn delete(req: UserDeleteRequest, pg: Arc<PgPool>) -> Result<(), UserDeleteError> {
     let uid = match req {
-        UserDeleteRequest::DeleteSelf { uid, password } => {
-            auth::authenticate_strict(
-                AuthenticationStrict::Password {
-                    uid: uid.clone(),
-                    password,
-                },
-                AccessLevel::ReadWrite,
-                &pg,
-            )
-            .await
-            .context(AuthErrorCast::<UserDeleteError>)?;
+        UserDeleteRequest::DeleteSelf { auth } => {
+            auth::authenticate_strict(&auth, &pg)
+                .await
+                .context(AuthErrorCast::<UserDeleteError>)?;
 
-            uid
+            auth.uid
         }
         UserDeleteRequest::DeleteOther { auth, uid } => {
             auth::authenticate(auth, AccessLevel::ReadWrite, &pg)

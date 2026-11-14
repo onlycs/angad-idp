@@ -7,7 +7,7 @@ import (
 	"syscall"
 
 	"angad.page/idp-ldap/routes"
-	transit "angad.page/transit/transit_ffi"
+	"angad.page/transit/transit"
 	ldap "github.com/vjeantet/ldapserver"
 )
 

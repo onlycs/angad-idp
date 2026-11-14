@@ -15,7 +15,7 @@
         "@types/node": "^26.6.6",
         "@types/xxhashjs": "^0.2.4",
         "@types/zxcvbn": "^4.4.5",
-        "carbon-components-svelte": "^0.114.0",
+        "carbon-components-svelte": "thirdparty/carbon-components-svelte/carbon-components-svelte-0.114.1.tgz",
         "carbon-icons-svelte": "^13.18.0",
         "carbon-preprocess-svelte": "^0.11.58",
         "clsx": "^2.1.1",
@@ -204,7 +204,7 @@
 
     "bun-types": ["bun-types@1.4.4", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-yjrJh5oGX7mMPKGd19YXyIjmEuj4G4zNC30bs7PM9Az7NQ3ndF3j6hbeRdvJTRQEhJ/FYQwW0a2moweEi2hMxQ=="],
 
-    "carbon-components-svelte": ["carbon-components-svelte@0.114.0", "", { "dependencies": { "@ibm/telemetry-js": "^1.10.2" } }, "sha512-YFMONj9f3R8bBe7LziMUANu7osmkjCN7LskGETpbD0oQOhAb4TjjP+umudv4Yl6zbvHtkLSElAoX6CnxkrVaOg=="],
+    "carbon-components-svelte": ["carbon-components-svelte@thirdparty/carbon-components-svelte/carbon-components-svelte-0.114.1.tgz", { "dependencies": { "@ibm/telemetry-js": "^1.10.2" } }, "sha512-ebB32h5WSwJHPMJ8tjVfQx8MeD1TqYpKoWVb6Qzc9PBGzSjwRdJmG43XzfGRy9ARGf31zOy2EiPXxDnYRBHU9A=="],
 
     "carbon-icons-svelte": ["carbon-icons-svelte@13.18.0", "", {}, "sha512-9Ga25DuZkqWuxdofqHwE5mjGiS0uM22bfdSNz6NVEGCpl//kDpUrAE9rDiZE4IbhHZoWl3rBx9GX6f7wDL9kmA=="],
 

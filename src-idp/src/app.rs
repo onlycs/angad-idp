@@ -47,12 +47,23 @@ pub(crate) async fn verify(slugs: &[String], pg: &PgPool) -> Result<(), VerifyEr
 }
 
 #[allow(clippy::ptr_arg)]
-pub(crate) fn split_roles(memberships: &Vec<Membership>) -> (Vec<String>, Vec<bool>) {
+pub(crate) fn split_and_fix(memberships: &mut Vec<Membership>) -> (Vec<String>, Vec<bool>) {
+    if memberships
+        .iter()
+        .find(|it| it.slug == DOMAIN_SLUG)
+        .is_none()
+    {
+        memberships.push(Membership {
+            slug: DOMAIN_SLUG.to_string(),
+            admin: false,
+        });
+    }
+
     memberships
         .iter()
         .sorted_by(|a, b| a.slug.cmp(&b.slug).then(b.admin.cmp(&a.admin)))
         .dedup_by(|a, b| a.slug == b.slug)
-        .map(|Membership { slug, admin }| (slug.clone(), admin))
+        .map(|Membership { slug, admin }| (slug.clone(), *admin))
         .unzip::<_, _, Vec<_>, Vec<_>>()
 }
 
@@ -169,7 +180,7 @@ pub(crate) async fn list(
 ) -> Result<Vec<Application>, ApplicationListError> {
     let (allow_all, specific) = match auth {
         Authentication::Integration(key) => {
-            auth::authenticate_integration(key, AccessLevel::Read, &pg)
+            auth::authenticate_ikey(key, AccessLevel::Read, &pg)
                 .await
                 .context(AuthErrorCast::<ApplicationListError>)?;
 

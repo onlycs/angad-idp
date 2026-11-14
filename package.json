@@ -21,7 +21,7 @@
         "@types/node": "^26.6.6",
         "@types/xxhashjs": "^0.2.4",
         "@types/zxcvbn": "^4.4.5",
-        "carbon-components-svelte": "^0.114.0",
+        "carbon-components-svelte": "thirdparty/carbon-components-svelte/carbon-components-svelte-0.114.1.tgz",
         "carbon-icons-svelte": "^13.18.0",
         "carbon-preprocess-svelte": "^0.11.58",
         "clsx": "^2.1.1",

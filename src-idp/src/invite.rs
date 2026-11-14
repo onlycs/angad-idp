@@ -12,7 +12,7 @@ use lettre::{
     message::{Mailbox, header::ContentType},
 };
 use snafu::prelude::*;
-use sqlx::{PgConnection, PgPool, types::Json};
+use sqlx::{PgConnection, PgPool};
 use transit_core::{InternalError, InternalErrorContext, TransitErrorContext};
 
 use crate::{
@@ -51,7 +51,7 @@ async fn add_roles(
 
 pub(crate) async fn create_impl(
     email: String,
-    memberships: Vec<Membership>,
+    mut memberships: Vec<Membership>,
     expiry: chrono::DateTime<Utc>,
     pg: &PgPool,
 ) -> Result<Invite, InviteCreateError> {
@@ -62,7 +62,7 @@ pub(crate) async fn create_impl(
     snafu::ensure!(EMAIL_RE.is_match(&email), InvalidEmail);
     snafu::ensure!(expiry > chrono::Utc::now(), InvalidExpiry);
 
-    let (role_slugs, role_admins) = app::split_roles(&memberships);
+    let (role_slugs, role_admins) = app::split_and_fix(&mut memberships);
 
     let existing = sqlx::query!("SELECT email FROM users WHERE email = $1", email)
         .fetch_optional(pg)
@@ -197,18 +197,18 @@ pub(crate) async fn update(
     InviteUpdateRequest {
         auth,
         id,
-        memberships,
+        mut memberships,
         exp,
     }: InviteUpdateRequest,
     pg: Arc<PgPool>,
-) -> Result<Invite, InviteUpdateError> {
+) -> Result<(), InviteUpdateError> {
     auth::authenticate(auth, AccessLevel::ReadWrite, &pg)
         .await
         .context(AuthErrorCast::<InviteUpdateError>)?;
 
     let key_hash = hex::decode(&id).context(TransitErrorContext!(NoInvite))?;
     let exp = exp.map(parse_expiry).transpose()?;
-    let split_roles = memberships.as_ref().map(app::split_roles);
+    let split_roles = memberships.as_mut().map(app::split_and_fix);
 
     let mut tx = pg
         .begin()
@@ -220,15 +220,14 @@ pub(crate) async fn update(
         UPDATE invites
         SET expiry = COALESCE($2, expiry)
         WHERE key_hash = $1
-        RETURNING *
         "#,
         key_hash,
         exp,
     )
-    .fetch_optional(&mut *tx)
+    .execute(&mut *tx)
     .await
-    .context(InternalErrorContext!(via(display), common::ERROR_DB))?
-    .context(NoInvite)?;
+    .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
+    snafu::ensure!(res.rows_affected() > 0, NoInvite);
 
     if let Some((role_slugs, role_admins)) = split_roles {
         sqlx::query!(
@@ -245,41 +244,11 @@ pub(crate) async fn update(
         add_roles(&key_hash, &role_slugs, &role_admins, &mut tx).await?;
     }
 
-    let memberships = match memberships {
-        Some(m) => m,
-        None => {
-            sqlx::query_scalar!(
-                r#"
-                SELECT
-                    COALESCE(
-                        JSONB_AGG(
-                            JSONB_BUILD_OBJECT('slug', r.application, 'admin', r.admin)
-                        ),
-                        '[]'::jsonb
-                    ) AS "roles!: Json<Vec<Membership>>"
-                FROM invites i
-                LEFT JOIN invite_roles r ON r.invite = i.key_hash
-                WHERE i.key_hash = $1
-                "#,
-                key_hash
-            )
-            .fetch_one(&mut *tx)
-            .await
-            .context(InternalErrorContext!(via(display), common::ERROR_DB))?
-            .0
-        }
-    };
-
     tx.commit()
         .await
         .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
-    Ok(Invite {
-        id,
-        email: res.email,
-        memberships,
-        exp: res.expiry.timestamp_millis() as u64,
-    })
+    Ok(())
 }
 
 #[tracing::instrument(ret, err, skip(auth, pg))]
