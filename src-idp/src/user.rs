@@ -138,7 +138,7 @@ pub(crate) async fn update(req: UserUpdateRequest, pg: Arc<PgPool>) -> Result<()
 
             snafu::ensure!(
                 user_token.is_none() || memberships.iter().any(Membership::is_domain_admin),
-                RemoveOwnDomainAdmin
+                SelfDeprivilege
             );
 
             let (slugs, admins) = app::split_and_fix(&mut memberships);
@@ -316,7 +316,7 @@ pub(crate) async fn delete(req: UserDeleteRequest, pg: Arc<PgPool>) -> Result<()
     .await
     .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
-    snafu::ensure!(!res.contains(&uid) || res.len() != 1, RemoveOwnDomainAdmin);
+    snafu::ensure!(!res.contains(&uid) || res.len() != 1, LastDomainAdmin);
 
     let res = sqlx::query!(
         r#"

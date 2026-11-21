@@ -50,13 +50,14 @@ error! {
     EmailInUse("Email in use");
     UsernameInUse("Username in use");
     IncorrectPassword("Incorrect password");
-    RemoveOwnDomainAdmin("Cannot remove yourself as a domain admin");
+    SelfDeprivilege("You cannot remove your own domain admin privileges");
+    LastDomainAdmin("Cannot delete the last domain admin");
 
     CheckPasswordError = NoUser | IncorrectPassword;
     UserListError = Denied;
     UserSearchError = NoUser | Denied;
-    UserUpdateError = NoUser | InvalidUsername | InvalidEmail | InsecurePassword | UsernameInUse | EmailInUse | NoApplication | RemoveOwnDomainAdmin | Denied;
-    UserDeleteError = NoUser | RemoveOwnDomainAdmin | Denied;
+    UserUpdateError = NoUser | InvalidUsername | InvalidEmail | InsecurePassword | UsernameInUse | EmailInUse | NoApplication | SelfDeprivilege | Denied;
+    UserDeleteError = NoUser | LastDomainAdmin | Denied;
 }
 
 route! {

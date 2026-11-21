@@ -1,30 +1,34 @@
 <script lang="ts" module>
-    export type Query = { kind: InlineNotificationProps["kind"]; message: string } | string;
-    type StrictQuery = { kind: InlineNotificationProps["kind"]; message: string };
+    export type Query = (Message & { subtitle: string }) | string;
+    type StrictQuery = Message & { subtitle: string };
 
     export const query = {
         encode(q: Query): URLSearchParams {
-            if (typeof q === "string") q = { kind: "error", message: q };
+            if (typeof q === "string") q = { kind: "error", subtitle: q };
 
             const params = new URLSearchParams();
-            params.set("kind", b64url.encode(q.kind ?? "error"));
-            params.set("message", b64url.encode(q.message));
+            params.set("message", b64url.encode(JSON.stringify(q)));
             return params;
         },
 
         decode(params: URLSearchParams): StrictQuery | null {
-            const kind = params.get("kind");
             const message = params.get("message");
-            if (!kind || !message) return null;
+            if (!message) return null;
 
-            const kind_decode = b64url.decode(kind);
             const message_decode = b64url.decode(message);
-            if (kind_decode.isErr() || message_decode.isErr()) return null;
+            if (message_decode.isErr()) return null;
 
-            return {
-                kind: kind_decode.value as any,
-                message: message_decode.value,
-            };
+            let res: StrictQuery;
+
+            try {
+                res = JSON.parse(message_decode.value) as any;
+            } catch (e) {
+                res = {
+                    subtitle: "Failed to parse error message",
+                };
+            }
+
+            return res;
         },
     };
 </script>
@@ -32,13 +36,14 @@
 <script lang="ts">
     import { afterNavigate, goto } from "$app/navigation";
 
-    import { Button, InlineNotification } from "carbon-components-svelte";
-    import type { InlineNotificationProps } from "carbon-components-svelte/src/Notification/InlineNotification.svelte";
+    import { Button } from "carbon-components-svelte";
     import { ArrowRight } from "carbon-icons-svelte";
 
     import Flow from "$components/Flow.svelte";
     import Header from "$components/Header.svelte";
 
+    import type { Message } from "$lib/components/utility/StatusMessages.svelte";
+    import StatusMessages from "$lib/components/utility/StatusMessages.svelte";
     import { b64url } from "$lib/encoding";
     import oauth2 from "$lib/oauth2";
     import { clear_query } from "$lib/routing.svelte";
@@ -83,7 +88,7 @@
             const tokens = await oauth2.handle_callback(params, login);
 
             if (tokens.isErr()) {
-                mode = { kind: "error", message: tokens.error };
+                mode = { kind: "error", subtitle: tokens.error };
                 return;
             }
 
@@ -110,19 +115,7 @@
             {/snippet}
 
             {#if typeof mode === "object"}
-                <InlineNotification
-                    kind={mode.kind}
-                    title={{
-                        error: "Something went wrong: ",
-                        info: "Note: ",
-                        "info-square": "Note: ",
-                        success: undefined,
-                        warning: "Warning: ",
-                        "warning-alt": "Warning: ",
-                    }[mode.kind ?? "error"]}
-                    subtitle={mode.message}
-                    on:close={() => (mode = "idle")}
-                />
+                <StatusMessages {...mode} />
             {/if}
         </Flow>
     </main>

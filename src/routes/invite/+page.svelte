@@ -80,7 +80,7 @@
 
         await leave({
             kind: "success",
-            message: "Account creation was successful. Please sign in",
+            subtitle: "Account creation was successful. Please sign in",
         });
     }
 

@@ -42,7 +42,9 @@
             memberships,
         });
 
-        messages.handle_api(res, token, "Successfully updated memberships");
+        if (await messages.handle_api(res, token, "Successfully updated memberships"))
+            return await update(ships);
+
         refresh();
     }
 </script>

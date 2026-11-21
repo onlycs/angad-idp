@@ -5,7 +5,7 @@
 
     import ValidatedForm from "$components/form/ValidatedForm.svelte";
     import MembershipsTable from "$components/users/MembershipsTable.svelte";
-    import { mkmessages } from "$components/utility/StatusMessages.svelte";
+    import StatusMessages, { mkmessages } from "$components/utility/StatusMessages.svelte";
 
     import { temporal } from "$lib/encoding";
     import { f } from "$lib/form";
@@ -100,7 +100,9 @@
 
         is_loading = false;
 
-        if (await messages.handle_api(res, token)) return await submit(out);
+        if (await messages.handle_api(res, token, "Successfully updated invite"))
+            return await submit(out);
+
         if (res.isErr()) return;
 
         if (!!rest.create) open = false;
@@ -124,10 +126,7 @@
     modalHeading={rest.create ? "Create new invite" : "Update invite"}
     primaryButtonText={rest.create ? "Create" : "Save"}
     secondaryButtonText="Cancel"
-    on:click:button--primary={() => {
-        messages.clear();
-        form_elem?.submit();
-    }}
+    on:click:button--primary={() => form_elem?.submit()}
     on:click:button--secondary={() => (open = false)}
     primaryButtonLoadingDescription={`${rest.create ? "Creat" : "Updat"}ing...`}
     loadingStatus={is_loading ? "active" : "inactive"}
@@ -138,6 +137,7 @@
         {#snippet render(field, sourceless, manual)}
             <div class="notifications">
                 {@render sourceless?.()}
+                <StatusMessages state={messages} />
             </div>
 
             <FluidForm autofocus={false}>
@@ -155,3 +155,11 @@
         {/snippet}
     </ValidatedForm>
 </Modal>
+
+<style>
+    @reference "tailwindcss";
+
+    .notifications {
+        @apply px-4;
+    }
+</style>

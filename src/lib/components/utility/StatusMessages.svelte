@@ -10,6 +10,7 @@
         title?: string;
         subtitle: string | Snippet;
         onclose?: () => unknown;
+        timeout_ms?: number;
     };
 
     export class MessagesState {
@@ -28,6 +29,7 @@
             this.messages.set(cuid2(), {
                 kind: "success",
                 subtitle: message,
+                timeout_ms: 5000,
             });
         }
 
@@ -125,7 +127,7 @@
         onclose={() => props.onclose()}
     />
 {:else}
-    {@const { kind: maybeKind, onclose, title, subtitle } = props}
+    {@const { kind: maybeKind, onclose, title, subtitle, timeout_ms } = props}
     {@const kind = maybeKind ?? "error"}
 
     <InlineNotification
@@ -134,5 +136,6 @@
         subtitle={typeof subtitle === "string" ? subtitle : undefined}
         subtitleChildren={typeof subtitle === "string" ? undefined : subtitle}
         on:close={() => onclose?.()}
+        timeout={timeout_ms}
     />
 {/if}

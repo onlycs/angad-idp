@@ -9,6 +9,7 @@ export default defineConfig({
         tailwindcss(),
         sveltekit({
             adapter: adapter(),
+            // fuck you svelte, i won't port over, hashtags are ugly.
             alias: {
                 $lib: "./src/lib",
                 $routes: "./src/routes",

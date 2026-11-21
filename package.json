@@ -6,7 +6,7 @@
         "dev": "vite dev",
         "preview": "vite preview",
         "prepare": "svelte-kit sync",
-        "check": "bun prepare && svelte-check --tsconfig ./tsconfig.json",
+        "check": "bun prepare && svelte-check --tsconfig ./tsconfig.json --diagnostic-sources 'js,svelte'",
         "fmt": "bunx prettier -w .",
         "postinstall": "make postinstall"
     },
