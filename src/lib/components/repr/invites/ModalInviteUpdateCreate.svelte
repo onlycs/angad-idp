@@ -4,7 +4,7 @@
     import z from "zod";
 
     import ValidatedForm from "$components/form/ValidatedForm.svelte";
-    import MembershipsTable from "$components/users/MembershipsTable.svelte";
+    import MembershipsTable from "$components/repr/MembershipsTable.svelte";
     import StatusMessages, { mkmessages } from "$components/utility/StatusMessages.svelte";
 
     import { temporal } from "$lib/encoding";
@@ -100,8 +100,15 @@
 
         is_loading = false;
 
-        if (await messages.handle_api(res, token, "Successfully updated invite"))
+        if (
+            await messages.handle_api(
+                res,
+                token,
+                rest.create ? undefined : "Successfully updated invite",
+            )
+        ) {
             return await submit(out);
+        }
 
         if (res.isErr()) return;
 
@@ -133,11 +140,16 @@
     fullWidth
     selectorPrimaryFocus={null}
 >
-    <ValidatedForm {form} {submit} bind:this={form_elem} bind:loading={is_loading}>
+    <ValidatedForm
+        {form}
+        {submit}
+        notifications={messages}
+        bind:this={form_elem}
+        bind:loading={is_loading}
+    >
         {#snippet render(field, sourceless, manual)}
             <div class="notifications">
                 {@render sourceless?.()}
-                <StatusMessages state={messages} />
             </div>
 
             <FluidForm autofocus={false}>

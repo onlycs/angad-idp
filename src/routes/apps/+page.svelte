@@ -9,10 +9,10 @@
         Modal,
     } from "carbon-components-svelte";
 
-    import AppGrid from "$components/apps/AppGrid.svelte";
-    import ModalAppUpdateCreate from "$components/apps/ModalAppUpdateCreate.svelte";
     import DisabledCopyInput from "$components/form/DisabledCopyInput.svelte";
     import Header from "$components/Header.svelte";
+    import AppGrid from "$components/repr/apps/AppGrid.svelte";
+    import ModalAppUpdateCreate from "$components/repr/apps/ModalAppUpdateCreate.svelte";
     import DataGuard from "$components/utility/DataGuard.svelte";
 
     import { mktransit } from "$lib/network.svelte";

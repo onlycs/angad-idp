@@ -3,8 +3,9 @@
     import { Add, UserFollow } from "carbon-icons-svelte";
     import { Err, Ok, type Result } from "neverthrow";
 
-    import CrudTable, { type Column } from "$components/CrudTable.svelte";
-    import ModalInviteUpdateCreate from "$components/users/ModalInviteUpdateCreate.svelte";
+    import CrudTable, { type Column, type ModalCtl } from "$components/repr/CrudTable.svelte";
+    import ModalInviteUpdateCreate from "$components/repr/invites/ModalInviteUpdateCreate.svelte";
+    import MembershipTags from "$components/repr/MembershipTags.svelte";
 
     import { temporal } from "$lib/encoding";
     import { mktransit, type ApiState } from "$lib/network.svelte";
@@ -26,18 +27,11 @@
                     timeStyle: "short",
                 }),
         },
+        { key: "memberships", value: "Memberships" },
     ];
-
-    let active = $state<Invite>();
-    let create = $state(false);
-    let update = $state(false);
 
     const api = mktransit();
     const token = oauth2.persist.token();
-
-    async function refresh() {
-        await Promise.all([apps.fetch(), invites.fetch()]);
-    }
 
     async function ondelete(invite: Invite): Promise<Result<undefined, string>> {
         const res = await api.route(route_invite_delete, {
@@ -55,32 +49,38 @@
     }
 </script>
 
-<ModalInviteUpdateCreate bind:open={create} {refresh} {apps} create />
-
-{#if active}
-    <ModalInviteUpdateCreate bind:open={update} {active} {refresh} {apps} />
-{/if}
+{#snippet memberships(invite: Invite)}
+    <MembershipTags memberships={invite.memberships} {apps} />
+{/snippet}
 
 <CrudTable
     title="Invites"
     description="Modify and create invites"
     items={invites}
-    {apps}
+    deps={[apps]}
     {columns}
+    cells={{ memberships }}
     search={(it) => [it.email]}
     sort={(it) => it.email}
-    {refresh}
-    onedit={(it) => {
-        active = it;
-        update = true;
-    }}
     {ondelete}
     deleteTitle={(rows) => (rows.length == 1 ? "Delete invite?" : `Delete ${rows.length} invites?`)}
     deletePhrase={(rows) => (rows.length == 1 ? rows[0].email : `delete ${rows.length} invites`)}
-    oncreate={() => (create = true)}
-    createLabel="Create Invite"
+    createLabel="Create invite"
 >
-    {#snippet empty()}
+    {#snippet create(modal: ModalCtl)}
+        <ModalInviteUpdateCreate bind:open={modal.open} refresh={modal.refresh} {apps} create />
+    {/snippet}
+
+    {#snippet edit(invite: Invite, modal: ModalCtl)}
+        <ModalInviteUpdateCreate
+            bind:open={modal.open}
+            active={invite}
+            refresh={modal.refresh}
+            {apps}
+        />
+    {/snippet}
+
+    {#snippet empty(create: (() => void) | undefined)}
         <EmptyState
             titleText="Create an invite"
             subtitleText="Use invites to add new users to Angad IdP"
@@ -88,7 +88,7 @@
             {#snippet illustration()}
                 <UserFollow size={64} />
             {/snippet}
-            <Button icon={Add} on:click={() => (create = true)}>Create Invite</Button>
+            <Button icon={Add} on:click={() => create?.()}>Create Invite</Button>
         </EmptyState>
     {/snippet}
 </CrudTable>

@@ -2,9 +2,9 @@
     import { Content } from "carbon-components-svelte";
 
     import Header from "$components/Header.svelte";
-    import UserTable from "$components/users/UserTable.svelte";
+    import InvitesTable from "$components/repr/invites/InvitesTable.svelte";
+    import UserTable from "$components/repr/users/UserTable.svelte";
 
-    import InvitesTable from "$lib/components/users/InvitesTable.svelte";
     import { mktransit } from "$lib/network.svelte";
     import oauth2 from "$lib/oauth2";
     import {

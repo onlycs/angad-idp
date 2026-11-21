@@ -41,9 +41,9 @@
 
     import Flow from "$components/Flow.svelte";
     import Header from "$components/Header.svelte";
+    import type { Message } from "$components/utility/StatusMessages.svelte";
+    import StatusMessages from "$components/utility/StatusMessages.svelte";
 
-    import type { Message } from "$lib/components/utility/StatusMessages.svelte";
-    import StatusMessages from "$lib/components/utility/StatusMessages.svelte";
     import { b64url } from "$lib/encoding";
     import oauth2 from "$lib/oauth2";
     import { clear_query } from "$lib/routing.svelte";
@@ -72,7 +72,7 @@
     afterNavigate(() => {
         (async () => {
             const params = new URLSearchParams(location.search);
-            clear_query();
+            if (params.size > 0) clear_query();
 
             const q = query.decode(params);
             mode = q ?? "idle";

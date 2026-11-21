@@ -71,7 +71,7 @@
             )
             .add(
                 "name",
-                f.input(z.string().trim().min(1, "Must not be empty"), {
+                f.input(z.string().trim().nonempty("Must not be empty"), {
                     placeholder: "Angad MyApp",
                     labelText: "Application name",
                 }),
