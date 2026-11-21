@@ -36,8 +36,9 @@
     import type { InlineNotificationProps } from "carbon-components-svelte/src/Notification/InlineNotification.svelte";
     import { ArrowRight } from "carbon-icons-svelte";
 
-    import Flow from "$lib/components/Flow.svelte";
-    import Header from "$lib/components/Header.svelte";
+    import Flow from "$components/Flow.svelte";
+    import Header from "$components/Header.svelte";
+
     import { b64url } from "$lib/encoding";
     import oauth2 from "$lib/oauth2";
     import { clear_query } from "$lib/routing.svelte";
@@ -47,7 +48,7 @@
     let mode = $state<StrictQuery | "loading" | "idle">("idle");
 
     async function to_apps() {
-        await goto("/apps", { replaceState: true });
+        await goto("/apps", { replace: true });
     }
 
     async function login() {
@@ -115,7 +116,7 @@
                         error: "Something went wrong: ",
                         info: "Note: ",
                         "info-square": "Note: ",
-                        success: "Success",
+                        success: undefined,
                         warning: "Warning: ",
                         "warning-alt": "Warning: ",
                     }[mode.kind ?? "error"]}

@@ -13,8 +13,10 @@
     import { Cube, Launch, SortAscending, SortDescending } from "carbon-icons-svelte";
     import { Fzf } from "fzf";
 
+    import TryFavicon from "$components/utility/TryFavicon.svelte";
+
     import { cn } from "$lib";
-    import TryFavicon from "$lib/components/TryFavicon.svelte";
+    import { mkmap } from "$lib/gymnastics";
     import oauth2 from "$lib/oauth2";
     import { type Application } from "$lib/wasm";
 
@@ -31,7 +33,7 @@
         oncreate: () => void;
     } = $props();
 
-    const kv = $derived(new Map(apps?.map((it) => [it.name, it])));
+    const by_name = $derived(mkmap(apps, (it) => it.name));
     const fzf = $derived(new Fzf(apps?.map((it) => it.name) ?? []));
 
     let filter = $state<string>("");
@@ -40,7 +42,7 @@
     const tiles = $derived(
         fzf
             .find(filter)
-            .map((it) => kv.get(it.item)!)
+            .map((it) => by_name.get(it.item)!)
             .sort((a, b) => a.name.localeCompare(b.name) * ((+sort_abc << 1) - 1)),
     );
 
@@ -63,7 +65,7 @@
                     <ToolbarSearch persistent bind:value={filter} />
                     <Button
                         kind="ghost"
-                        icon={sort_abc ? SortDescending : SortAscending}
+                        icon={sort_abc ? SortAscending : SortDescending}
                         on:click={() => (sort_abc = !sort_abc)}
                     />
                     <Button on:click={oncreate}>Create Application</Button>
@@ -71,7 +73,7 @@
             </Toolbar>
         {/if}
         <div class={cn("app-tiles", !token.admin() && "gapped")}>
-            {#each tiles as app}
+            {#each tiles as app (app.slug)}
                 <ClickableTile class="tiled" icon={Launch} on:click={(ev) => launch(ev, app.url)}>
                     <Text type="fluid-heading-03">{app.name}</Text>
 

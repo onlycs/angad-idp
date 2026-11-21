@@ -1,5 +1,5 @@
 # rust and go projects
-src-api/**
+src-idp/**
 src-proto/**
 src-ldap/**
 thirdparty/**

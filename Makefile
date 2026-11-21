@@ -2,7 +2,7 @@ SHELL := bash
 
 .PHONY: help
 .PHONY: proto proto-wasm proto-native
-.PHONY: ldap wasm api
+.PHONY: ldap wasm api docker
 .PHONY: fmt postinstall thirdparty
 
 help:
@@ -78,8 +78,7 @@ build: api wasm ldap
 precommit:
 	cd src-idp && rm -rf .sqlx && cargo sqlx prepare
 
-docker:
-	cd src-idp && rm -rf .sqlx && cargo sqlx prepare
+docker: precommit
 	docker compose build
 
 update:

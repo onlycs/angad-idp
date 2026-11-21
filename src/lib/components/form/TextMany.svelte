@@ -9,8 +9,9 @@
     import { Add, SubtractAlt } from "carbon-icons-svelte";
     import clsx from "clsx";
 
+    import InputWithButtons from "$components/form/InputWithButtons.svelte";
+
     import { cn } from "$lib";
-    import InputWithButtons from "$lib/components/form/InputWithButtons.svelte";
 
     export interface TextManyProps {
         value: string[];

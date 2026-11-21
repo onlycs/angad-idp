@@ -5,7 +5,7 @@
 
     type Snippets =
         | {
-              error: Snippet<[message: string, clear: () => unknown]>;
+              error: Snippet<[error: string, onclose: () => unknown]>;
               loading: Snippet;
               success: Snippet<[T]>;
           }
@@ -16,7 +16,7 @@
                       | { data: T; error?: never }
                       | {
                             data?: never;
-                            error: { message: string; clear: () => unknown };
+                            error: { error: string; onclose: () => unknown };
                         },
                   ]
               >;
@@ -34,7 +34,7 @@
 {#if error && "error" in props}
     {@render props.error(error, clear)}
 {:else if error && "completed" in props}
-    {@render props.completed({ error: { message: error, clear } })}
+    {@render props.completed({ error: { error: error, onclose: clear } })}
 {:else if !value}
     {@render props.loading()}
 {:else if "success" in props}

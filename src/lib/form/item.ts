@@ -1,9 +1,11 @@
 import type { PasswordInputProps } from "carbon-components-svelte/src/TextInput/PasswordInput.svelte";
 import type { TextInputProps } from "carbon-components-svelte/src/TextInput/TextInput.svelte";
+import type { Temporal } from "temporal-polyfill";
 import type { z } from "zod";
 
-import type { DropdownProps } from "$lib/components/form/Dropdown.svelte";
-import type { TextManyProps } from "$lib/components/form/TextMany.svelte";
+import type { DateTimeProps } from "$components/form/DateTime.svelte";
+import type { DropdownProps } from "$components/form/Dropdown.svelte";
+import type { TextManyProps } from "$components/form/TextMany.svelte";
 
 export type Controlled = "value" | "invalid" | "invalidText";
 interface BaseKinds<V> {
@@ -11,6 +13,7 @@ interface BaseKinds<V> {
     password: { value: string; props: Omit<PasswordInputProps, Controlled> };
     text_many: { value: string[]; props: Omit<TextManyProps, Controlled> };
     dropdown: { value: string; props: Omit<DropdownProps<V & string>, Controlled> };
+    datetime: { value: Temporal.ZonedDateTime; props: Omit<DateTimeProps, Controlled> };
     manual: { value: unknown; props: {} };
 }
 

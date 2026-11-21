@@ -3,7 +3,7 @@ use std::str::FromStr;
 use transit_core::{constvar, error, oneof, record, route};
 use xxhash_rust::const_xxh3;
 
-use crate::{auth::Authentication, error::Denied};
+use crate::auth::{Authentication, Denied};
 
 #[constvar]
 pub const DOMAIN_SLUG: &str = "angad-idp";
@@ -164,11 +164,12 @@ error! {
     InvalidRedirectUri("Could not parse redirect_uri `{uri}`") { uri: String };
     SlugInUse("Slug in use");
     AppNameInUse("Name in use");
+    ModifyDomain("Cannot modify the this application");
 
     ApplicationCreateError = InvalidSlug | InvalidAppName | InvalidUrl | InvalidRedirectUri | SlugInUse | AppNameInUse | Denied;
     ApplicationListError = Denied;
-    ApplicationUpdateError = NoApplication | NoApplicationOidc | ApplicationOidcExists | NotPrivate | InvalidAppName | InvalidUrl | InvalidRedirectUri | AppNameInUse | Denied;
-    ApplicationDeleteError = NoApplication | Denied;
+    ApplicationUpdateError = NoApplication | NoApplicationOidc | ApplicationOidcExists | NotPrivate | InvalidAppName | InvalidUrl | InvalidRedirectUri | AppNameInUse | ModifyDomain | Denied;
+    ApplicationDeleteError = NoApplication | ModifyDomain | Denied;
 }
 
 route! {

@@ -1,165 +1,62 @@
 <script lang="ts">
-    import {
-        DataTable,
-        fuzzyMatch,
-        InlineNotification,
-        Modal,
-        MultiSelect,
-        MultiSelectSkeleton,
-        RadioButton,
-        RadioButtonGroup,
-        Tag,
-        Toolbar,
-        ToolbarContent,
-    } from "carbon-components-svelte";
+    import { Modal } from "carbon-components-svelte";
 
-    import DataGuard from "$lib/components/DataGuard.svelte";
-    import type { ApiState } from "$lib/network.svelte";
-    import { domain_slug, type Application, type Membership, type User } from "$lib/wasm";
+    import StatusMessages, { mkmessages } from "$components/utility/StatusMessages.svelte";
+
+    import { mktransit, type ApiState } from "$lib/network.svelte";
+    import oauth2 from "$lib/oauth2";
+    import { route_user_update, type Application, type Membership, type User } from "$lib/wasm";
+    import MembershipsTable from "./MembershipsTable.svelte";
 
     interface Props {
+        open: boolean;
         active: User | undefined;
         apps: ApiState<Application[]>;
+        refresh: () => unknown;
     }
 
-    let { active = $bindable(), apps }: Props = $props();
+    const api = mktransit();
+    const token = oauth2.persist.token();
+    const messages = mkmessages();
 
-    let multiselect = $state<HTMLInputElement>();
-    let require_blur = $derived(!!active);
+    let { open = $bindable(), active, apps, refresh }: Props = $props();
+
     let heading = $state("");
-
-    $effect(() => {
-        if (!multiselect) return;
-        if (!require_blur) return;
-
-        require_blur = false;
-        setTimeout(() => multiselect?.blur(), 5); // this sucks, but it works
-    });
-
     $effect(() => {
         if (!!active) heading = active.username;
     });
 
-    let selected = $state<string[]>([]);
     let memberships = $state<Membership[]>([]);
-
-    // for some fkin reason, $derived isn't deeply reactive.
     $effect(() => {
-        if (!active) return;
+        if (!active) return messages.clear();
         memberships = active.memberships.map((it) => ({ ...it }));
-        selected = active.memberships.map((it) => it.slug);
     });
 
-    function update(ships: Membership[]) {}
+    async function update(ships: Membership[]) {
+        if (!active) return;
+
+        const res = await api.route(route_user_update, {
+            tag: "update_other",
+            auth: token.into_api(),
+            uid: active.id,
+            memberships,
+        });
+
+        messages.handle_api(res, token, "Successfully updated memberships");
+        refresh();
+    }
 </script>
 
 <Modal
-    bind:open={() => !!active, () => (active = undefined)}
+    bind:open
     modalLabel="Memberships"
     modalHeading={`Update memberships for "${heading}"`}
     primaryButtonText="Save"
     secondaryButtonText="Cancel"
     on:click:button--primary={() => update(memberships)}
-    on:click:button--secondary={() => (active = undefined)}
-    autofocus={false}
+    on:click:button--secondary={() => (open = false)}
+    selectorPrimaryFocus={null}
 >
-    <DataGuard data={apps}>
-        {#snippet loading()}
-            <MultiSelectSkeleton />
-        {/snippet}
-
-        {#snippet success(apps)}
-            {@const app_map = apps.reduce(
-                (acc, it) => acc.set(it.slug, it),
-                new Map<string, Application>(),
-            )}
-            {@const ship_map = memberships.reduce(
-                (acc, it) => acc.set(it.slug, it),
-                new Map<string, Membership>(),
-            )}
-
-            <DataTable
-                headers={[
-                    { key: "name", value: "Application", minWidth: "45%" },
-                    { key: "admin", value: "Role" },
-                ]}
-                rows={selected
-                    .map((it) => app_map.get(it)!)
-                    .map((it) => ({
-                        ...it,
-                        id: it.slug,
-                        admin: ship_map.get(it.slug)!.admin,
-                    }))
-                    .sort((a, b) => a.name.localeCompare(b.name))}
-            >
-                <Toolbar>
-                    <ToolbarContent>
-                        <div class="ms-container">
-                            <MultiSelect
-                                filterable
-                                filterItem={(item, value) => fuzzyMatch(item.text, value).matched}
-                                items={apps.map((app) => ({
-                                    id: app.slug,
-                                    text: app.name,
-                                    disabled: app.slug == domain_slug(),
-                                }))}
-                                placeholder="Add or remove applications..."
-                                bind:inputRef={multiselect}
-                                bind:selectedIds={
-                                    () => selected,
-                                    (selecteds: string[]) => {
-                                        if (!selecteds.includes(domain_slug()))
-                                            selecteds.push(domain_slug());
-                                        selected = selecteds;
-                                    }
-                                }
-                            />
-                        </div>
-                    </ToolbarContent>
-                </Toolbar>
-
-                {#snippet cell({ row, cell })}
-                    {#if cell.key == "name"}
-                        <Tag type={row.admin ? "red" : "blue"}>{row.name}</Tag>
-                    {:else if cell.key == "admin"}
-                        <RadioButtonGroup
-                            bind:selected={
-                                () => JSON.stringify(row.admin),
-                                (value) => (ship_map.get(row.id)!.admin = JSON.parse(value))
-                            }
-                            disabled={row.slug == domain_slug()}
-                        >
-                            <RadioButton labelText="Admin" value="true" />
-                            <RadioButton labelText="Member" value="false" />
-                        </RadioButtonGroup>
-                    {/if}
-                {/snippet}
-            </DataTable>
-        {/snippet}
-
-        {#snippet error(err)}
-            <InlineNotification
-                kind="error"
-                title="Something went wrong: "
-                subtitle={err}
-                onclose={() => apps.fetch()}
-            />
-        {/snippet}
-    </DataGuard>
+    <StatusMessages state={messages} />
+    <MembershipsTable {memberships} {apps} is_self={active?.id == token.user.uid} />
 </Modal>
-
-<style>
-    @reference "tailwindcss";
-
-    .ms-container {
-        @apply h-fit w-full;
-
-        :global(> div > div) {
-            @apply border-0;
-        }
-
-        :global(> div > div > div > div) {
-            @apply h-auto p-3;
-        }
-    }
-</style>

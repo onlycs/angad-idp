@@ -99,6 +99,10 @@ export type NullPassthrough<T, K> = T extends null | undefined ? T : K;
 
 // ---------- Runtime helpers ----------
 
+export function mkmap<T, K>(arr: T[] | undefined, keyof: (it: T) => K): Map<K, T> {
+    return (arr ?? []).reduce((acc, it) => acc.set(keyof(it), it), new Map<K, T>());
+}
+
 /**
  * `as const` minus the `readonly`. Works best with literals.
  * ```ts
@@ -169,7 +173,7 @@ export function ornull<T, K>(f: (a: T) => K): (a: T | null | undefined) => K | n
 export function ornullish<T, K>(
     f: (a: T) => K,
 ): <A extends T | null | undefined>(a: A) => NullPassthrough<A, K> {
-    return (a: any) => (a == null ? a : f(a));
+    return (a: any) => (a == null || a == undefined ? a : f(a));
 }
 
 export function undefparam<T>(

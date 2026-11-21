@@ -287,6 +287,37 @@ pub(crate) async fn delete(req: UserDeleteRequest, pg: Arc<PgPool>) -> Result<()
         }
     };
 
+    let mut tx = pg
+        .begin()
+        .await
+        .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
+
+    sqlx::query("SET LOCAL lock_timeout = '5s'")
+        .execute(&mut *tx)
+        .await
+        .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
+
+    sqlx::query("SELECT pg_advisory_xact_lock(42, hashtext($1))")
+        .bind(app::DOMAIN_SLUG)
+        .execute(&mut *tx)
+        .await
+        .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
+
+    let res = sqlx::query_scalar!(
+        r#"
+        SELECT r.uid FROM roles r
+        WHERE
+            r.application = $1 AND
+            r.admin
+        "#,
+        app::DOMAIN_SLUG
+    )
+    .fetch_all(&mut *tx)
+    .await
+    .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
+
+    snafu::ensure!(!res.contains(&uid) || res.len() != 1, RemoveOwnDomainAdmin);
+
     let res = sqlx::query!(
         r#"
         DELETE FROM users
@@ -294,13 +325,17 @@ pub(crate) async fn delete(req: UserDeleteRequest, pg: Arc<PgPool>) -> Result<()
         "#,
         uid,
     )
-    .execute(&*pg)
+    .execute(&mut *tx)
     .await
     .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
     if res.rows_affected() == 0 {
         return Err(NoUser.into());
     }
+
+    tx.commit()
+        .await
+        .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
     Ok(())
 }

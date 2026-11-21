@@ -1,4 +1,5 @@
 import { Result } from "neverthrow";
+import { Temporal } from "temporal-polyfill";
 
 export const b64url = {
     encode(bytes: Uint8Array | ArrayBuffer | string): string {
@@ -48,5 +49,45 @@ export const sha1 = {
 
     async encodeLower(value: string): Promise<string> {
         return (await sha1.encodeUpper(value)).toLowerCase();
+    },
+};
+
+export const temporal = {
+    from_epoch(millis: number) {
+        return Temporal.Instant.fromEpochMilliseconds(millis).toZonedDateTimeISO(
+            Temporal.Now.timeZoneId(),
+        );
+    },
+
+    from_date(date: Date) {
+        return date.toTemporalInstant().toZonedDateTimeISO(Temporal.Now.timeZoneId());
+    },
+
+    set_day(base: Temporal.ZonedDateTime, to: Temporal.PlainDate) {
+        return base.with({
+            year: to.year,
+            month: to.month,
+            day: to.day,
+        });
+    },
+
+    now() {
+        return Temporal.Now.zonedDateTimeISO(Temporal.Now.timeZoneId());
+    },
+
+    max(a: Temporal.ZonedDateTime, b: Temporal.ZonedDateTime) {
+        return Temporal.ZonedDateTime.compare(a, b) < 0 ? b : a;
+    },
+
+    lte(lhs: Temporal.ZonedDateTime, rhs: Temporal.ZonedDateTime) {
+        return Temporal.ZonedDateTime.compare(lhs, rhs) <= 0;
+    },
+
+    h12(time: Temporal.PlainTime) {
+        return time.hour % 12 || 12;
+    },
+
+    period(time: Temporal.PlainTime) {
+        return time.hour < 12 ? "am" : "pm";
     },
 };

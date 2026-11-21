@@ -13,7 +13,9 @@
         "^carbon-",
         "<THIRD_PARTY_MODULES>",
         "",
-        "^\\$(lib|components|routes)",
+        "^\\$components",
+        "",
+        "^\\$(lib|routes)",
         "^[.]"
     ],
     "tailwindFunctions": ["cn"],

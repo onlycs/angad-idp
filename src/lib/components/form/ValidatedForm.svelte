@@ -1,32 +1,31 @@
 <script lang="ts" generics="I extends Items">
     import { untrack, type Snippet } from "svelte";
 
-    import { InlineNotification, PasswordInput, TextInput } from "carbon-components-svelte";
+    import { PasswordInput, TextInput } from "carbon-components-svelte";
 
-    import Dropdown from "$lib/components/form/Dropdown.svelte";
-    import Nullable from "$lib/components/form/Nullable.svelte";
-    import TextMany from "$lib/components/form/TextMany.svelte";
-    import type {
-        AnyItem,
-        Form,
-        FormError,
-        FormValue,
-        IsMany,
-        Items,
-        SourcelessMessage,
-    } from "$lib/form";
+    import Dropdown from "$components/form/Dropdown.svelte";
+    import Nullable from "$components/form/Nullable.svelte";
+    import TextMany from "$components/form/TextMany.svelte";
+    import StatusMessages, {
+        mkmessages,
+        type Message,
+        type MessagesState,
+    } from "$components/utility/StatusMessages.svelte";
+
+    import type { AnyItem, Form, FormError, FormValue, IsMany, Items } from "$lib/form";
     import type { RenderedKey } from "$lib/form/item";
+    import DateTime from "./DateTime.svelte";
 
     let {
         form,
         render,
         submit: owner_submit,
-        extra_messages = $bindable(),
+        notifications: owner_notifications,
         loading = $bindable(false),
     }: {
         form: Form<I>;
         submit: (value: FormValue<I>, endload: () => unknown) => unknown;
-        extra_messages?: SourcelessMessage[];
+        notifications?: MessagesState;
         loading?: boolean;
         render: Snippet<
             [
@@ -44,7 +43,7 @@
     type FormErrors = {
         [K in keyof I]?: IsMany<I[K]> extends true ? (string | undefined)[] : string;
     } & {
-        sourceless?: SourcelessMessage[];
+        sourceless?: Message[];
     };
 
     type Result = { error: true; errors: FormErrors } | { error: false; output: FormValue<I> };
@@ -124,13 +123,19 @@
     });
     let errors = $state<FormErrors>({});
 
+    const validation = mkmessages();
+
     async function handle_submit() {
         loading = true;
         errors = {};
+        validation.messages.clear();
 
         const res = await errors_of(partial);
         if (res.error) {
-            errors = res.errors;
+            const { sourceless, ...field_errors } = res.errors;
+            errors = field_errors as FormErrors;
+            for (const message of sourceless ?? []) validation.push(message);
+
             loading = false;
             return;
         }
@@ -141,7 +146,9 @@
     export const submit: () => unknown = handle_submit;
     export const reset: () => unknown = () => (reset_trigger = !untrack(() => reset_trigger));
 
-    let num_sourceless = $derived((errors.sourceless?.length ?? 0) + (extra_messages?.length ?? 0));
+    let num_sourceless = $derived(
+        validation.messages.size + (owner_notifications?.messages.size ?? 0),
+    );
 </script>
 
 {#snippet field<K extends RenderedKey<I>>(key: K, extraProps?: Partial<I[K]["props"]>)}
@@ -173,6 +180,14 @@
             {...item.props}
             {...extraProps}
         />
+    {:else if item.tag === "datetime"}
+        <DateTime
+            bind:value={p[key]}
+            invalid={!!err}
+            invalidText={err}
+            {...item.props}
+            {...extraProps}
+        />
     {:else if item.tag === "text_many"}
         {@const errs = errors[key] as (string | undefined)[] | undefined}
         <TextMany
@@ -194,28 +209,12 @@
     {/if}
 {/snippet}
 
-{#snippet sourceless_individual(
-    message: SourcelessMessage,
-    src: SourcelessMessage[] | undefined,
-    i: number,
-)}
-    <InlineNotification
-        kind={message.kind ?? "error"}
-        title={message.title}
-        subtitle={typeof message.subtitle === "string" ? message.subtitle : undefined}
-        subtitleChildren={typeof message.subtitle !== "string" ? message.subtitle : undefined}
-        on:close={() => src?.splice(i, 1)}
-    />
-{/snippet}
-
 {#snippet sourceless()}
-    {#each errors.sourceless as message, i}
-        {@render sourceless_individual(message, errors.sourceless, i)}
-    {/each}
+    <StatusMessages state={validation} />
 
-    {#each extra_messages as message, i}
-        {@render sourceless_individual(message, extra_messages, i)}
-    {/each}
+    {#if owner_notifications}
+        <StatusMessages state={owner_notifications} />
+    {/if}
 {/snippet}
 
 {@render render(field, num_sourceless != 0 ? sourceless : undefined, partial, handle_submit)}

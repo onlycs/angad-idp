@@ -20,8 +20,8 @@
 <script lang="ts">
     import { PasswordInput, TextInput } from "carbon-components-svelte";
 
-    import Dropdown from "$lib/components/form/Dropdown.svelte";
-    import TextMany from "$lib/components/form/TextMany.svelte";
+    import Dropdown from "$components/form/Dropdown.svelte";
+    import TextMany from "$components/form/TextMany.svelte";
 
     let { enabled = $bindable(false), value = $bindable(), tag, ...rest }: OwnProps = $props();
 

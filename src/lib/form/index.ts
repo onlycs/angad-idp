@@ -1,19 +1,10 @@
-import type { Snippet } from "svelte";
-
-import type { InlineNotification } from "carbon-components-svelte";
-import type { InlineNotificationProps } from "carbon-components-svelte/src/Notification/InlineNotification.svelte";
-import { z } from "zod";
+import { zZonedDateTime } from "temporal-zod";
+import z, { type ZodEmail } from "zod";
 import zxcvbn from "zxcvbn";
 
-import type {
-    AnyItem,
-    AnyNonNullableItem,
-    IsMany,
-    Item,
-    ItemProps,
-    Items,
-    RenderedKey,
-} from "$lib/form/item";
+import type { Message } from "$components/utility/StatusMessages.svelte";
+
+import type { AnyItem, AnyNonNullableItem, IsMany, Item, ItemProps, Items } from "$lib/form/item";
 import type { MaybePromise } from "$lib/gymnastics";
 
 export type {
@@ -35,13 +26,7 @@ export type FieldError<I extends Items> = {
     };
 }[keyof I & string];
 
-export type SourcelessMessage = {
-    kind?: InlineNotificationProps["kind"];
-    title: string;
-    subtitle: string | Snippet;
-    onclose?: () => unknown;
-};
-export type FormError<I extends Items> = FieldError<I> | { sourceless: SourcelessMessage };
+export type FormError<I extends Items> = FieldError<I> | { sourceless: Message };
 export type Validator<I extends Items> = (data: FormValue<I>) => MaybePromise<FormError<I>[]>;
 export interface Form<I extends Items> {
     items: I;
@@ -102,6 +87,16 @@ export const f = {
         zod,
         props,
     }),
+    datetime(
+        zod: z.ZodType<Temporal.ZonedDateTime> = zZonedDateTime,
+        props: ItemProps<"datetime", Temporal.ZonedDateTime> = {},
+    ): Item<"datetime", z.ZodType<Temporal.ZonedDateTime>> {
+        return {
+            tag: "datetime",
+            props,
+            zod,
+        };
+    },
     password_unchecked: <Z extends z.ZodType<string>>(
         zod: Z,
         props: ItemProps<"password">,
@@ -148,6 +143,16 @@ export const f = {
                 placeholder: "_johndoe01",
             },
         );
+    },
+
+    email(
+        zod: ZodEmail = z.email("Invalid email"),
+        props: Omit<ItemProps<"input">, "type"> = {
+            placeholder: "user@example.com",
+            labelText: "Email",
+        },
+    ) {
+        return f.input(zod, { ...props, type: "email" });
     },
 
     password() {

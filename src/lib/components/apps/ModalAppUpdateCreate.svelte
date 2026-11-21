@@ -1,28 +1,27 @@
 <script lang="ts">
-    import { Button, CopyInput, FluidForm, Modal } from "carbon-components-svelte";
+    import { Button, FluidForm, Modal } from "carbon-components-svelte";
     import { Renew, Undo } from "carbon-icons-svelte";
-    import type { Result } from "neverthrow";
     import z from "zod";
 
-    import ValidatedForm from "$lib/components/form/ValidatedForm.svelte";
-    import { f, type SourcelessMessage } from "$lib/form";
-    import { mktransit, type ApiResult } from "$lib/network.svelte";
+    import DisabledCopyInput from "$components/form/DisabledCopyInput.svelte";
+    import InputWithButtons from "$components/form/InputWithButtons.svelte";
+    import ValidatedForm from "$components/form/ValidatedForm.svelte";
+    import { mkmessages } from "$components/utility/StatusMessages.svelte";
+
+    import { f } from "$lib/form";
+    import { mktransit, type AnyTransitError, type ApiResult } from "$lib/network.svelte";
     import oauth2 from "$lib/oauth2";
     import {
         route_application_create,
         route_application_update,
         type Application,
-        type ApplicationCreateFfiError,
         type ApplicationCreateRequest,
         type ApplicationCreateResponse,
         type ApplicationOidcUpdate,
         type ApplicationPublicUpdate,
-        type ApplicationUpdateFfiError,
         type ApplicationUpdateRequest,
         type ApplicationUpdateResponse,
     } from "$lib/wasm";
-    import DisabledCopyInput from "../form/DisabledCopyInput.svelte";
-    import InputWithButtons from "../form/InputWithButtons.svelte";
 
     type Props = (
         { create: true; active?: undefined } | { create?: false; active: Application }
@@ -136,9 +135,7 @@
     );
 
     async function submit(submitted: z.output<typeof form.z>) {
-        let res:
-            | ApiResult<ApplicationCreateResponse, ApplicationCreateFfiError>
-            | ApiResult<ApplicationUpdateResponse, ApplicationUpdateFfiError>;
+        let res: ApiResult<ApplicationCreateResponse | ApplicationUpdateResponse, AnyTransitError>;
 
         if (!!create) {
             const q: ApplicationCreateRequest = {
@@ -209,34 +206,22 @@
 
         loading = false;
 
-        if (res.isErr()) {
-            await token.handle_denied(res.error);
-            console.error(res.error.report());
-
-            messages = [
-                {
-                    title: "Something went wrong: ",
-                    subtitle: res.error.display(),
-                },
-            ];
-            return;
-        }
+        if (await messages.handle_api(res, token)) return await submit(submitted);
+        if (res.isErr()) return;
 
         onupdated?.(
-            "client_id" in res.value
-                ? res.value.client_id
-                : (res.value as ApplicationUpdateResponse).app.oidc?.client_id,
+            "app" in res.value ? res.value.app.oidc?.client_id : res.value.client_id,
             res.value.client_secret,
         );
     }
 
+    const messages = mkmessages();
     let loading = $state(false);
-    let messages = $state<SourcelessMessage[]>();
     let form_elem = $state<ValidatedForm<typeof form.items>>();
 
     $effect(() => {
         if (!open) {
-            messages = [];
+            messages.clear();
             setTimeout(() => form_elem?.reset(), 250);
         }
     });
@@ -249,7 +234,7 @@
     primaryButtonText="Save"
     secondaryButtonText="Cancel"
     on:click:button--primary={() => {
-        messages = [];
+        messages.clear();
         form_elem?.submit();
     }}
     on:click:button--secondary={() => (open = false)}
@@ -258,14 +243,8 @@
     loadingStatus={loading ? "active" : "inactive"}
 >
     <div class="update-form">
-        <ValidatedForm
-            {form}
-            {submit}
-            bind:extra_messages={messages}
-            bind:this={form_elem}
-            bind:loading
-        >
-            {#snippet render(field, sourceless, manual, submit)}
+        <ValidatedForm {form} {submit} notifications={messages} bind:this={form_elem} bind:loading>
+            {#snippet render(field, sourceless, manual)}
                 <div class="notifications">
                     {@render sourceless?.()}
                 </div>

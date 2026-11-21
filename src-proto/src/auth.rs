@@ -1,4 +1,4 @@
-use transit_core::{oneof, record};
+use transit_core::{error, oneof, record};
 
 #[oneof]
 #[derive(Copy, PartialEq, Eq)]
@@ -17,4 +17,15 @@ pub enum Authentication {
 pub struct AuthenticateSelfStrict {
     pub uid: String,
     pub password: String,
+}
+
+#[oneof]
+pub enum DeniedReason {
+    NoAccess,
+    Invalid,
+    Expired,
+}
+
+error! {
+    Denied("Permission denied") { reason: DeniedReason };
 }

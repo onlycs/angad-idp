@@ -26,6 +26,7 @@ export interface AutheliaToken {
     tokens: {
         access: string;
         id: string;
+        refresh: string;
     };
     exp: number;
     user: UserInfo;
@@ -49,7 +50,7 @@ export function login_redirect(sv: { challenge: string; state: string }): URL {
         client_id: CLIENT_ID,
         response_type: "code",
         redirect_uri: `${window.location.origin}/`,
-        scope: "openid profile email groups uid",
+        scope: "openid profile email groups uid offline_access",
         state: sv.state,
         code_challenge: sv.challenge,
         code_challenge_method: "S256",
@@ -60,6 +61,7 @@ export function login_redirect(sv: { challenge: string; state: string }): URL {
 
 interface TokenResponse {
     access_token: string;
+    refresh_token: string;
     token_type: "bearer";
     expires_in: number;
     scope: string;
@@ -119,20 +121,71 @@ async function handle_callback(
         );
     }
 
-    const res2 = await fetch_safe(`${AUTHELIA_URL}/api/oidc/userinfo`, {
-        headers: { Authorization: `Bearer ${tokens.access_token}` },
-    });
-
+    const res2 = await userinfo(tokens.access_token);
     if (res2.isErr()) return new Err(res2.error);
-    if (!res2.value.res.ok) return new Err(`failed to get userinfo: ${res2.value.res.status}`);
 
     return new Ok({
         tokens: {
             access: tokens.access_token,
             id: tokens.id_token,
+            refresh: tokens.refresh_token,
         },
         exp: Date.now() + tokens.expires_in * 1000,
-        user: res2.value.json,
+        user: res2.value,
+    });
+}
+
+async function userinfo(access_token: string): Promise<Result<UserInfo, string>> {
+    const res = await fetch_safe(`${AUTHELIA_URL}/api/oidc/userinfo`, {
+        headers: { Authorization: `Bearer ${access_token}` },
+    });
+
+    if (res.isErr()) return new Err(res.error);
+    if (!res.value.res.ok) return new Err(`failed to get userinfo: ${res.value.res.status}`);
+
+    return new Ok(res.value.json as UserInfo);
+}
+
+interface RefreshResponseRaw {
+    access_token: string;
+    refresh_token: string;
+    id_token: string;
+    token_type: "Bearer";
+    expires_in: number;
+}
+
+interface RefreshResponse {
+    access_token: string;
+    refresh_token: string;
+    id_token: string;
+    exp: number;
+    userinfo: UserInfo;
+}
+
+async function refresh(token: string): Promise<Result<RefreshResponse, string>> {
+    const res = await fetch_safe(`${AUTHELIA_URL}/api/oidc/token`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+            grant_type: "refresh_token",
+            refresh_token: token,
+            client_id: CLIENT_ID,
+        }),
+    });
+
+    if (res.isErr()) return new Err(res.error);
+    const value = res.value.json as RefreshResponseRaw | TokenError;
+    if ("error" in value) return new Err(value.error_description ?? value.error);
+
+    const res2 = await userinfo(value.access_token);
+    if (res2.isErr()) return new Err(res2.error);
+
+    return new Ok({
+        ...value,
+        exp: Date.now() + value.expires_in * 1000,
+        userinfo: res2.value,
     });
 }
 
@@ -141,4 +194,5 @@ export default {
     challenge,
     login_redirect,
     handle_callback,
+    refresh,
 };

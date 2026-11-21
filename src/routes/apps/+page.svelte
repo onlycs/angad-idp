@@ -9,11 +9,12 @@
         Modal,
     } from "carbon-components-svelte";
 
-    import AppGrid from "$lib/components/apps/AppGrid.svelte";
-    import ModalAppUpdateCreate from "$lib/components/apps/ModalAppUpdateCreate.svelte";
-    import DataGuard from "$lib/components/DataGuard.svelte";
-    import DisabledCopyInput from "$lib/components/form/DisabledCopyInput.svelte";
-    import Header from "$lib/components/Header.svelte";
+    import AppGrid from "$components/apps/AppGrid.svelte";
+    import ModalAppUpdateCreate from "$components/apps/ModalAppUpdateCreate.svelte";
+    import DisabledCopyInput from "$components/form/DisabledCopyInput.svelte";
+    import Header from "$components/Header.svelte";
+    import DataGuard from "$components/utility/DataGuard.svelte";
+
     import { mktransit } from "$lib/network.svelte";
     import oauth2 from "$lib/oauth2";
     import { route_application_delete, route_application_list, type Application } from "$lib/wasm";
@@ -54,7 +55,8 @@
         });
 
         if (res.isErr()) {
-            await token.handle_denied(res.error);
+            if (await token.handle_denied(res.error))
+                return await ondelete(app, confirm, throw_error_on_error);
             console.error(res.error.report());
             delete_error = res.error.display();
             if (throw_error_on_error) throw new Error("");
@@ -64,8 +66,8 @@
     }
 
     function onupdated(client_id?: string, client_secret?: string) {
-        if (wants_create) wants_create = false;
-        if (wants_modify) wants_modify = false;
+        wants_create = false;
+        wants_modify = false;
         display_oidc = { client_id, client_secret };
 
         apps.fetch();

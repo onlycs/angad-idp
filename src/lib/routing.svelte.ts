@@ -1,5 +1,5 @@
-import { replaceState } from "$app/navigation";
+import { goto } from "$app/navigation";
 
 export function clear_query() {
-    replaceState(location.pathname + location.hash, {});
+    goto(location.pathname + location.hash, { replace: true });
 }

@@ -5,9 +5,11 @@
     import { ArrowRight } from "carbon-icons-svelte";
     import { z } from "zod";
 
+    import Flow from "$components/Flow.svelte";
+    import ValidatedForm from "$components/form/ValidatedForm.svelte";
+    import { mkmessages } from "$components/utility/StatusMessages.svelte";
+
     import { cn } from "$lib";
-    import Flow from "$lib/components/Flow.svelte";
-    import ValidatedForm from "$lib/components/form/ValidatedForm.svelte";
     import { f } from "$lib/form";
     import { haveibeenpwned, mktransit } from "$lib/network.svelte";
     import { clear_query } from "$lib/routing.svelte";
@@ -52,8 +54,9 @@
         .build();
 
     const api = mktransit();
+    const messages = mkmessages();
+
     let token = $state("");
-    let error = $state<string>();
     let loading = $state(false);
 
     async function leave(query?: login.Query) {
@@ -73,11 +76,7 @@
 
         loading = false;
 
-        if (res.isErr()) {
-            error = res.error.display();
-            console.error(res.error.report());
-            return;
-        }
+        if (messages.handle_api_tokenless(res)) return;
 
         await leave({
             kind: "success",
@@ -119,22 +118,13 @@
             </Button>
         {/snippet}
 
-        <ValidatedForm
-            {form}
-            {submit}
-            bind:extra_messages={
-                () => (error ? [{ title: "Something went wrong: ", subtitle: error }] : []),
-                (res) => (res.length == 0 ? (error = undefined) : [])
-            }
-            bind:this={form_elem}
-            bind:loading
-        >
+        <ValidatedForm {form} {submit} notifications={messages} bind:this={form_elem} bind:loading>
             {#snippet render(field, sourceless)}
                 {#if sourceless}
                     {@render sourceless()}
                 {/if}
 
-                <Form class={cn("form", !sourceless && !error && "pad")}>
+                <Form class={cn("form", !sourceless && !messages && "pad")}>
                     <Stack gap={5}>
                         {@render field("username")}
                         {@render field("password")}

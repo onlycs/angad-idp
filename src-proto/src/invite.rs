@@ -2,8 +2,7 @@ use transit_core::{error, record, route};
 
 use crate::{
     app::{Membership, NoApplication},
-    auth::Authentication,
-    error::Denied,
+    auth::{Authentication, Denied},
     user::{EmailInUse, InvalidEmail, InvalidUsername, User, UsernameInUse},
 };
 

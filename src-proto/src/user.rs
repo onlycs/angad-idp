@@ -2,8 +2,7 @@ use transit_core::{error, oneof, record, route};
 
 use crate::{
     app::{Membership, NoApplication},
-    auth::{AuthenticateSelfStrict, Authentication},
-    error::Denied,
+    auth::{AuthenticateSelfStrict, Authentication, Denied},
     invite::InsecurePassword,
 };
 
@@ -57,7 +56,7 @@ error! {
     UserListError = Denied;
     UserSearchError = NoUser | Denied;
     UserUpdateError = NoUser | InvalidUsername | InvalidEmail | InsecurePassword | UsernameInUse | EmailInUse | NoApplication | RemoveOwnDomainAdmin | Denied;
-    UserDeleteError = NoUser | Denied;
+    UserDeleteError = NoUser | RemoveOwnDomainAdmin | Denied;
 }
 
 route! {

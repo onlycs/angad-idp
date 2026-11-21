@@ -1,12 +1,8 @@
 use std::borrow::Borrow;
 
-use idp_proto::{
-    auth::{AccessLevel, AuthenticateSelfStrict, Authentication},
-    error::Denied,
-};
+use idp_proto::auth::{AccessLevel, AuthenticateSelfStrict, Authentication, Denied, DeniedReason};
 use snafu::{OptionExt, ResultExt};
 use sqlx::PgPool;
-use tracing::info;
 use transit_core::{InternalErrorContext, error};
 
 use crate::{authelia::AutheliaToken, common, user};
@@ -27,11 +23,16 @@ pub(crate) async fn authenticate_ikey(
     .fetch_optional(pg)
     .await
     .context(InternalErrorContext!(via(display), common::ERROR_DB))?
-    .context(Denied)?;
+    .context(Denied {
+        reason: DeniedReason::Invalid,
+    })?;
 
-    if read_only && level == AccessLevel::ReadWrite {
-        return Err(Denied.into());
-    }
+    snafu::ensure!(
+        !(read_only && level == AccessLevel::ReadWrite),
+        Denied {
+            reason: DeniedReason::NoAccess
+        }
+    );
 
     Ok(())
 }
@@ -52,11 +53,16 @@ pub(crate) async fn authenticate_user_any(
     .fetch_optional(pg)
     .await
     .context(InternalErrorContext!(via(display), common::ERROR_DB))?
-    .context(Denied)?;
+    .context(Denied {
+        reason: DeniedReason::Invalid,
+    })?;
 
-    info!("{updated}");
-
-    snafu::ensure!(updated < token.issued, Denied);
+    snafu::ensure!(
+        updated < token.issued,
+        Denied {
+            reason: DeniedReason::Expired
+        }
+    );
 
     Ok(token)
 }
@@ -66,7 +72,12 @@ pub(crate) async fn authenticate_user_admin(
     pg: &PgPool,
 ) -> Result<AutheliaToken, AuthError> {
     let token = authenticate_user_any(token, pg).await?;
-    snafu::ensure!(token.is_domain_admin(), Denied);
+    snafu::ensure!(
+        token.is_domain_admin(),
+        Denied {
+            reason: DeniedReason::NoAccess
+        }
+    );
 
     Ok(token)
 }
@@ -99,10 +110,15 @@ pub(crate) async fn authenticate_strict(
     .fetch_optional(pg)
     .await
     .context(InternalErrorContext!(via(display), common::ERROR_DB))?
-    .context(Denied)?;
+    .context(Denied {
+        reason: DeniedReason::Invalid,
+    })?;
 
     if let Err(_incorrect) = user::verify_password(&hashed, password) {
-        return Err(Denied.into());
+        return Err(Denied {
+            reason: DeniedReason::Invalid,
+        }
+        .into());
     }
 
     Ok(())

@@ -1,8 +1,11 @@
 import { goto } from "$app/navigation";
 
+import { Err, Ok, type Result } from "neverthrow";
+
 import type { AnyTransitError } from "$lib/network.svelte";
 import type { AutheliaToken, LoginState } from "$lib/oauth2";
-import { persist_session, Persisted, persisted } from "$lib/persist.svelte";
+import oauth2 from "$lib/oauth2";
+import { persist_session, persisted, type Persisted } from "$lib/persist.svelte";
 import { domain_slug, group_suffix_admin, type Authentication, type Denied } from "$lib/wasm";
 import * as index from "$routes/+page.svelte";
 
@@ -20,12 +23,22 @@ function isDenied(inner?: {
 
 export class PersistedToken {
     private inner: Persisted<AutheliaToken | null>;
-
+    private _refresh_lck = $state(false);
+    private _refresh_awaiters: ((res: Result<undefined, string>) => void)[] = [];
+    private _exp = $derived(this.exists() ? this.value.exp : null);
     constructor() {
         this.inner = persisted<AutheliaToken | null>("token", null);
 
         $effect(() => {
             if (this.inner.value == null && location.pathname != "/") void this.leave();
+        });
+
+        $effect(() => {
+            if (this._exp == null) return;
+
+            const delay = this._exp - Date.now();
+            const timer = setTimeout(() => this.refresh_or_leave(), Math.max(delay - 3500, 0));
+            return () => clearTimeout(timer);
         });
     }
 
@@ -43,6 +56,10 @@ export class PersistedToken {
         return this.inner.value!;
     }
 
+    get user() {
+        return this.value.user;
+    }
+
     set value(token: AutheliaToken) {
         this.inner.value = token;
     }
@@ -58,15 +75,76 @@ export class PersistedToken {
         };
     }
 
+    handle_denied_sync_unsafe(item: AnyTransitError) {
+        this.handle_denied(item);
+        return "inner" in item && isDenied(item?.inner);
+    }
+
     async handle_denied(item: AnyTransitError) {
-        if ("inner" in item && isDenied(item?.inner))
-            await this.leave("Permission denied. Please log in again.");
+        if ("inner" in item && isDenied(item?.inner)) {
+            const reason = item.inner.source.source.reason.tag;
+            if (reason == "expired") {
+                const res = await this.refresh();
+                if (!res.isErr()) return true;
+            }
+
+            const readable = {
+                no_access: "no access",
+                invalid: "invalid credentials",
+                expired: "login expired",
+            }[reason];
+
+            await this.leave(`Permission denied (${readable}). Please log in again.`);
+        }
+
+        return false;
+    }
+
+    private async refresh_or_leave() {
+        const res = await this.refresh();
+        if (!res.isErr()) return;
+        await this.leave("Login expired. Please log in again");
+    }
+
+    private async refresh(): Promise<Result<undefined, string>> {
+        if (this._refresh_lck) {
+            return await new Promise((res) => this._refresh_awaiters.push(res));
+        } else {
+            this._refresh_lck = true;
+            await new Promise((res) => setTimeout(res, 250)); // wait for everyone else to hit the locks
+        }
+
+        const res = await oauth2.refresh(this.value.tokens.refresh);
+
+        if (res.isErr()) {
+            const ret = new Err<undefined, string>(res.error);
+            this._refresh_awaiters.forEach((it) => it(ret));
+            this._refresh_lck = false;
+
+            return ret;
+        }
+
+        this.value = {
+            tokens: {
+                access: res.value.access_token,
+                refresh: res.value.refresh_token,
+                id: res.value.id_token,
+            },
+            exp: res.value.exp,
+            user: res.value.userinfo,
+        };
+
+        const ret = new Ok<undefined, string>(undefined);
+        this._refresh_awaiters.forEach((it) => it(ret));
+        this._refresh_lck = false;
+
+        return ret;
     }
 
     private async leave(params?: index.Query): Promise<never> {
         this.clear();
         if (!params) await goto("/");
-        else await goto(`/${index.query.encode(params).toString()}`);
+        else await goto(`/?${index.query.encode(params).toString()}`);
 
         return new Promise<never>(() => {});
     }

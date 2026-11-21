@@ -272,6 +272,7 @@ pub(crate) async fn update(
     let name = name.as_ref().map(|name| name.trim());
     snafu::ensure!(name.is_none_or(|n| !n.is_empty()), InvalidAppName);
     snafu::ensure!(url.as_ref().is_none_or(|u| URL_RE.is_match(u)), InvalidUrl);
+    snafu::ensure!(slug != DOMAIN_SLUG, ModifyDomain);
 
     let mut tx = pg
         .begin()
@@ -466,6 +467,8 @@ pub(crate) async fn delete(
     auth::authenticate(auth, AccessLevel::ReadWrite, &pg)
         .await
         .context(AuthErrorCast::<ApplicationDeleteError>)?;
+
+    snafu::ensure!(slug != DOMAIN_SLUG, ModifyDomain);
 
     let res = sqlx::query!(
         r#"

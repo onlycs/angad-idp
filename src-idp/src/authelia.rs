@@ -10,8 +10,7 @@ use ed25519_dalek::{
 use getrandom::{SysRng, rand_core::UnwrapErr};
 use idp_proto::{
     app::{GROUP_SUFFIX_ADMIN, GROUP_SUFFIX_USER, Membership},
-    auth::AccessLevel,
-    error::Denied,
+    auth::{AccessLevel, Denied, DeniedReason},
     integration::{INTERNAL_INTEGRATION_ID, INTERNAL_INTEGRATION_NAME},
 };
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, crypto};
@@ -217,7 +216,10 @@ impl snafu::IntoError<AuthError> for AutheliaSnafu {
         match source {
             AutheliaError::JwtMalformed { .. }
             | AutheliaError::InvalidClientId { .. }
-            | AutheliaError::InvalidIat { .. } => Denied.into(),
+            | AutheliaError::InvalidIat { .. } => Denied {
+                reason: DeniedReason::Invalid,
+            }
+            .into(),
             _ => InternalError!(ctx(source), common::ERROR_GENERIC).into(),
         }
     }

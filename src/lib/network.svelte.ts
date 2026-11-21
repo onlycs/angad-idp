@@ -3,6 +3,7 @@ import { onMount } from "svelte";
 import { Err, Ok, Result, ResultAsync } from "neverthrow";
 
 import { sha1 } from "$lib/encoding";
+import { mkmap, type Narrow } from "$lib/gymnastics";
 import type { PersistedToken } from "$lib/oauth2/persists.svelte";
 import { Transit } from "$lib/wasm";
 
@@ -21,7 +22,7 @@ export async function fetch_safe(req: URL | string | Request, init?: RequestInit
     return ResultAsync.fromThrowable(
         async () => {
             const res = await fetch(req, init);
-            return { json: await res.json(), res };
+            return { json: (await res.json()) as unknown, res };
         },
         (e) => {
             const error = e as
@@ -110,7 +111,7 @@ export class TransitWrapper {
         F extends (transit: Transit, req: T) => Promise<TransitResult<unknown, unknown>>,
     >(
         f: F,
-        req: T,
+        req: Narrow<T>,
     ): Promise<
         F extends (...args: any[]) => Promise<TransitResult<infer T, infer E>>
             ? ApiResult<T, E>
@@ -118,7 +119,7 @@ export class TransitWrapper {
     > {
         try {
             if (!_instance) await this.tryInit(true);
-            const res = await f(_instance!, req);
+            const res = await f(_instance!, req as T);
             if ("Err" in res) return new Err(res.Err) as any;
             else return new Ok(res.Ok) as any;
         } catch (e) {
@@ -172,12 +173,13 @@ export class ApiState<T> {
         this.err = undefined;
     }
 
-    async fetch() {
+    async fetch(): Promise<void> {
         this.clear_error();
 
-        const res = (await this.tr.route(this.f, this.req())) as ApiResult<T, AnyTransitError>;
+        const q = this.req() as any;
+        const res = (await this.tr.route(this.f, q)) as ApiResult<T, AnyTransitError>;
         if (res.isErr()) {
-            await this.token.handle_denied(res.error);
+            if (await this.token.handle_denied(res.error)) return await this.fetch();
             console.error(res.error.report());
             this.err = res.error.display();
             return;

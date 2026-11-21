@@ -1,9 +1,6 @@
 use transit_core::{constvar, error, record, route};
 
-use crate::{
-    auth::{AccessLevel, Authentication},
-    error::Denied,
-};
+use crate::auth::{AccessLevel, Authentication, Denied};
 
 #[constvar]
 pub const INTERNAL_INTEGRATION_ID: &str = "a00000000000000000000000";
