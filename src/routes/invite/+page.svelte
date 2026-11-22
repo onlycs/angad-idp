@@ -76,7 +76,7 @@
 
         loading = false;
 
-        if (messages.handle_api_tokenless(res)) return;
+        if (!messages.handle_api_tokenless(res)) return;
 
         await leave({
             kind: "success",
@@ -84,7 +84,9 @@
         });
     }
 
-    afterNavigate(() => {
+    afterNavigate(({ shallow }) => {
+        if (shallow) return;
+
         (async () => {
             const tkn = search.get("token");
             if (!tkn) return await leave("invalid invite");
@@ -118,7 +120,7 @@
             </Button>
         {/snippet}
 
-        <ValidatedForm {form} {submit} notifications={messages} bind:this={form_elem} bind:loading>
+        <ValidatedForm {form} {submit} {messages} bind:this={form_elem} bind:loading>
             {#snippet render(field, sourceless)}
                 {#if sourceless}
                     {@render sourceless()}

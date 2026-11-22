@@ -243,7 +243,7 @@
     loadingStatus={loading ? "active" : "inactive"}
 >
     <div class="update-form">
-        <ValidatedForm {form} {submit} notifications={messages} bind:this={form_elem} bind:loading>
+        <ValidatedForm {form} {submit} {messages} bind:this={form_elem} bind:loading>
             {#snippet render(field, sourceless, manual)}
                 <div class="notifications">
                     {@render sourceless?.()}

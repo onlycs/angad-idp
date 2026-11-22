@@ -25,11 +25,11 @@
             });
         }
 
-        success(message: string) {
+        success(message: string, timeout_ms = 5000) {
             this.messages.set(cuid2(), {
                 kind: "success",
                 subtitle: message,
-                timeout_ms: 5000,
+                timeout_ms: timeout_ms <= 0 ? undefined : timeout_ms,
             });
         }
 
@@ -52,15 +52,15 @@
         handle_api_tokenless<T, E extends AnyTransitError>(
             result: ApiResult<T, E>,
             success?: string,
-        ): result is Err<T, E> {
+        ): result is Ok<T, E> {
             if (result.isErr()) {
                 this.error(result.error.display());
                 console.error(result.error.report());
-                return true;
+                return false;
             }
 
             if (success) this.success(success);
-            return false;
+            return true;
         }
 
         push(message: Message) {
@@ -81,6 +81,10 @@
         clear() {
             this.messages.clear();
         }
+
+        get size() {
+            return this.messages.size;
+        }
     }
 
     export const mkmessages = () => new MessagesState();
@@ -92,7 +96,7 @@
 
     import { InlineNotification } from "carbon-components-svelte";
     import type { InlineNotificationProps } from "carbon-components-svelte/src/Notification/InlineNotification.svelte";
-    import type { Err } from "neverthrow";
+    import type { Err, Ok } from "neverthrow";
 
     import StatusMessages from "$components/utility/StatusMessages.svelte";
 

@@ -1,56 +1,71 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="x-apple-disable-message-reformatting" />
+        <meta name="format-detection" content="telephone=no, date=no, address=no, email=no, url=no" />
         <meta name="color-scheme" content="light dark" />
         <meta name="supported-color-schemes" content="light dark" />
-        <title>Your Angad Auth invitation</title>
-        <!--
-      Static email adaptation of the Angad Auth Carbon login template.
-      Carbon tokens are resolved here: g10 background/layer/text and primary;
-      g100 equivalents below. Spacing: 05=16, 07=32, 08=40, 09=48 pixels.
-      Essential layout and light-theme styles are inline. No JS, custom elements,
-      web fonts, CSS variables, or SVG are required. The PNG logo is embedded.
-    -->
+        <title>You’re invited to Angad</title>
+        <!--[if mso]>
+            <noscript>
+                <xml>
+                    <o:OfficeDocumentSettings>
+                        <o:PixelsPerInch>96</o:PixelsPerInch>
+                    </o:OfficeDocumentSettings>
+                </xml>
+            </noscript>
+            <style>
+                body, table, td, p, a, h1, span { font-family: Arial, sans-serif !important; }
+            </style>
+        <![endif]-->
+        <!--[if !mso]><!-->
+        <link
+            href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&amp;display=swap"
+            rel="stylesheet"
+        />
+        <!--<![endif]-->
+        <!-- Core styles. Kept free of attribute selectors so Gmail doesn't discard the block. -->
         <style>
             :root {
                 color-scheme: light dark;
-                supported-color-schemes: light dark;
             }
             body {
                 margin: 0 !important;
                 padding: 0 !important;
+                width: 100% !important;
             }
             table {
+                border-collapse: collapse;
                 border-spacing: 0;
             }
             img {
                 border: 0;
                 outline: none;
                 text-decoration: none;
-            }
-            a[x-apple-data-detectors] {
-                color: inherit !important;
-                text-decoration: none !important;
+                -ms-interpolation-mode: bicubic;
             }
             .invite-button:hover {
-                background-color: #0353e9 !important;
+                background-color: #0050e6 !important;
             }
             .invite-button:focus-visible {
-                outline: 2px solid #0f62fe;
-                outline-offset: 2px;
-                box-shadow: inset 0 0 0 1px #ffffff;
+                outline: 2px solid #ffffff;
+                outline-offset: -4px;
             }
             @media screen and (max-width: 480px) {
                 .email-outer {
-                    padding: 24px 16px !important;
+                    padding: 16px 0 !important;
                 }
                 .email-content {
-                    padding: 24px 24px 40px !important;
+                    padding: 32px 24px 28px !important;
                 }
-                .email-brand {
-                    padding-bottom: 32px !important;
+                .email-header {
+                    padding: 24px 24px 24px !important;
+                }
+                .email-tagline {
+                    font-size: 26px !important;
+                    line-height: 32px !important;
                 }
                 .email-title {
                     font-size: 28px !important;
@@ -81,24 +96,41 @@
                 .email-link {
                     color: #78a9ff !important;
                 }
-                .invite-button:focus-visible {
-                    outline-color: #ffffff;
+                .email-rule {
+                    border-top-color: #393939 !important;
                 }
             }
         </style>
-        <!--[if mso]>
-            <style>
-                table,
-                td,
-                h1,
-                p,
-                a {
-                    font-family: Arial, sans-serif !important;
-                }
-            </style>
-        <![endif]-->
+        <!-- Client-specific fixes in their own block, so an unsupported selector can't take the core styles down with it. -->
+        <style>
+            a[x-apple-data-detectors] {
+                color: inherit !important;
+                text-decoration: none !important;
+                font: inherit !important;
+            }
+            u + #body a {
+                color: inherit;
+                text-decoration: none;
+            }
+            [data-ogsc] .email-primary {
+                color: #f4f4f4 !important;
+            }
+            [data-ogsc] .email-secondary {
+                color: #c6c6c6 !important;
+            }
+            [data-ogsc] .email-link {
+                color: #78a9ff !important;
+            }
+            [data-ogsb] .email-background {
+                background-color: #161616 !important;
+            }
+            [data-ogsb] .email-card {
+                background-color: #262626 !important;
+            }
+        </style>
     </head>
     <body
+        id="body"
         class="email-background"
         style="
             margin: 0;
@@ -109,194 +141,218 @@
             -ms-text-size-adjust: 100%;
         "
     >
+        <!-- Inbox preview text. The &zwnj;&nbsp; run stops clients pulling body copy into the preview. -->
         <div
             style="
                 display: none;
                 max-height: 0;
+                max-width: 0;
                 overflow: hidden;
                 opacity: 0;
                 mso-hide: all;
                 font-size: 1px;
                 line-height: 1px;
+                color: #f4f4f4;
             "
         >
-            Accept your Angad Auth invitation to access angad.page services.
+            Accept your Angad Account invitation to access angad.page services.
+            &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847;
+            &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847;
+            &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847;
+            &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847;
         </div>
-        <table
-            role="presentation"
-            class="email-background"
-            width="100%"
-            cellpadding="0"
-            cellspacing="0"
-            border="0"
-            bgcolor="#f4f4f4"
-            style="width: 100%; background-color: #f4f4f4"
-        >
-            <tr>
-                <td class="email-outer" align="center" style="padding: 64px 16px">
-                    <!--[if mso]><table role="presentation" width="448" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
-                    <table
-                        role="presentation"
-                        width="100%"
-                        cellpadding="0"
-                        cellspacing="0"
-                        border="0"
-                        style="
-                            width: 100%;
-                            max-width: 448px;
-                            font-family: &quot;IBM Plex Sans&quot;, Arial, sans-serif;
-                        "
-                    >
-                        <tr>
-                            <td
-                                class="email-card email-content"
-                                bgcolor="#ffffff"
-                                style="background-color: #ffffff; padding: 32px 32px 48px"
-                            >
-                                <table
-                                    role="presentation"
-                                    cellpadding="0"
-                                    cellspacing="0"
-                                    border="0"
-                                    style="
-                                        font-family: &quot;IBM Plex Sans&quot;, Arial, sans-serif;
-                                    "
+
+        <div role="article" aria-roledescription="email" aria-label="You’re invited to Angad" lang="en">
+            <table
+                role="presentation"
+                class="email-background"
+                width="100%"
+                cellpadding="0"
+                cellspacing="0"
+                border="0"
+                bgcolor="#f4f4f4"
+                style="width: 100%; background-color: #f4f4f4"
+            >
+                <tr>
+                    <td class="email-outer" align="center" style="padding: 48px 16px">
+                        <!--[if mso]>
+                        <table role="presentation" width="448" cellpadding="0" cellspacing="0" border="0" align="center"><tr><td>
+                        <![endif]-->
+                        <table
+                            role="presentation"
+                            width="100%"
+                            cellpadding="0"
+                            cellspacing="0"
+                            border="0"
+                            style="
+                                width: 100%;
+                                max-width: 448px;
+                                font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;
+                            "
+                        >
+                            <!-- Headline on the page background, above the card, à la Google sign-in c. 2013 -->
+                            <tr>
+                                <td
+                                    class="email-header"
+                                    align="center"
+                                    style="padding: 0 0 32px; text-align: center"
                                 >
-                                    <tr>
-                                        <td
-                                            class="email-brand"
-                                            width="32"
-                                            valign="middle"
-                                            style="width: 32px; padding-bottom: 40px"
-                                        >
-                                            <img
-                                                src="data:image/png;base64,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"
-                                                width="32"
-                                                height="32"
-                                                alt=""
-                                                style="
-                                                    display: block;
-                                                    width: 32px;
-                                                    height: 32px;
-                                                    border: 0;
-                                                "
-                                            />
-                                        </td>
-                                        <td
-                                            class="email-brand email-primary"
-                                            valign="middle"
-                                            style="
-                                                padding-left: 10px;
-                                                padding-bottom: 40px;
-                                                color: #161616;
-                                                font-size: 16px;
-                                                line-height: 24px;
-                                                font-weight: 500;
-                                            "
-                                        >
-                                            Angad Auth
-                                        </td>
-                                    </tr>
-                                </table>
-                                <h1
-                                    class="email-title email-primary"
-                                    style="
-                                        margin: 0 0 8px;
-                                        color: #161616;
-                                        font-size: 32px;
-                                        line-height: 40px;
-                                        font-weight: 400;
-                                        letter-spacing: 0;
-                                    "
-                                >
-                                    You’re invited
-                                </h1>
-                                <p
-                                    class="email-secondary"
-                                    style="
-                                        margin: 0;
-                                        color: #525252;
-                                        font-size: 16px;
-                                        line-height: 24px;
-                                    "
-                                >
-                                    You’ve been invited to Angad Auth. Accept your invitation to
-                                    access angad.page services.
-                                </p>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td
-                                bgcolor="#0f62fe"
-                                style="background-color: #0f62fe; mso-padding-alt: 20px 32px"
-                            >
-                                <a
-                                    class="invite-button"
-                                    href="{{invite_url}}"
-                                    style="
-                                        display: block;
-                                        padding: 20px 32px;
-                                        background-color: #0f62fe;
-                                        color: #ffffff;
-                                        font-size: 16px;
-                                        line-height: 24px;
-                                        font-weight: 400;
-                                        text-align: left;
-                                        text-decoration: none;
-                                        mso-padding-alt: 0;
-                                    "
-                                >
-                                    Accept invitation<span
-                                        aria-hidden="true"
-                                        style="float: right; color: #ffffff"
-                                        >&nbsp;→</span
+                                    <h2
+                                        class="email-tagline email-secondary"
+                                        style="
+                                            margin: 0;
+                                            color: #525252;
+                                            font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;
+                                            font-size: 32px;
+                                            line-height: 40px;
+                                            font-weight: 300;
+                                            letter-spacing: 0;
+                                        "
                                     >
-                                </a>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td
-                                class="email-footer email-secondary"
-                                style="
-                                    padding: 24px 32px 0;
-                                    color: #525252;
-                                    font-size: 14px;
-                                    line-height: 20px;
-                                    text-align: left;
-                                "
-                            >
-                                <p style="margin: 0 0 8px">
-                                    If the button doesn’t work, copy this link into your browser:
-                                </p>
-                                <p
-                                    style="
-                                        margin: 0 0 24px;
-                                        overflow-wrap: anywhere;
-                                        word-break: break-all;
-                                    "
+                                        One account. All of Angad.
+                                    </h2>
+                                </td>
+                            </tr>
+
+                            <!-- Card -->
+                            <tr>
+                                <td
+                                    class="email-card email-content"
+                                    bgcolor="#ffffff"
+                                    style="background-color: #ffffff; padding: 40px 32px 36px"
+                                >
+                                    <!-- Avatar (where Google put the grey silhouette) -->
+                                    <img
+                                        src="data:image/png;base64,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"
+                                        width="72"
+                                        height="72"
+                                        alt="Angad"
+                                        style="display: block; width: 72px; height: 72px; border: 0; margin: 0 auto"
+                                    />
+
+                                    <h1
+                                        class="email-title email-primary"
+                                        style="
+                                            margin: 24px 0 12px;
+                                            color: #161616;
+                                            font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;
+                                            font-size: 32px;
+                                            line-height: 40px;
+                                            font-weight: 400;
+                                            letter-spacing: 0;
+                                            text-align: center;
+                                        "
+                                    >
+                                        Welcome
+                                    </h1>
+                                    <p
+                                        class="email-secondary"
+                                        style="
+                                            margin: 0;
+                                            color: #525252;
+                                            font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;
+                                            font-size: 16px;
+                                            line-height: 24px;
+                                            text-align: center;
+                                        "
+                                    >
+                                        You have been invited to Angad. Accept your invitation to
+                                        access the Angad services.
+                                    </p>
+                                </td>
+                            </tr>
+
+                            <!-- Full-width primary action (Carbon-style card footer button) -->
+                            <tr>
+                                <td
+                                    bgcolor="#0f62fe"
+                                    style="background-color: #0f62fe; mso-padding-alt: 20px 32px"
                                 >
                                     <a
-                                        class="email-link"
+                                        class="invite-button"
                                         href="{{invite_url}}"
+                                        target="_blank"
                                         style="
-                                            color: #0f62fe;
-                                            text-decoration: underline;
-                                            overflow-wrap: anywhere;
-                                            word-break: break-all;
+                                            display: block;
+                                            padding: 20px 32px;
+                                            background-color: #0f62fe;
+                                            color: #ffffff;
+                                            font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;
+                                            font-size: 16px;
+                                            line-height: 24px;
+                                            font-weight: 400;
+                                            text-align: left;
+                                            text-decoration: none;
+                                            mso-padding-alt: 0;
                                         "
-                                        >{{invite_url}}</a
+                                        ><span aria-hidden="true" style="float: right; color: #ffffff"
+                                            >→</span
+                                        >Accept invitation</a
                                     >
-                                </p>
-                                <p style="margin: 0">
-                                    If you weren’t expecting this invitation, you can ignore this
-                                    email.
-                                </p>
-                            </td>
-                        </tr>
-                    </table>
-                    <!--[if mso]></td></tr></table><![endif]-->
-                </td>
-            </tr>
-        </table>
+                                </td>
+                            </tr>
+
+                            <!-- Footer -->
+                            <tr>
+                                <td
+                                    class="email-footer email-secondary"
+                                    style="
+                                        padding: 32px 32px 0;
+                                        color: #525252;
+                                        font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;
+                                        font-size: 14px;
+                                        line-height: 20px;
+                                        text-align: left;
+                                    "
+                                >
+                                    <p style="margin: 0 0 8px">
+                                        Button not working? Paste this link into your browser:
+                                    </p>
+                                    <p style="margin: 0 0 24px; word-break: break-all">
+                                        <a
+                                            class="email-link"
+                                            href="{{invite_url}}"
+                                            target="_blank"
+                                            style="color: #0f62fe; text-decoration: underline; word-break: break-all"
+                                            >{{invite_url}}</a
+                                        >
+                                    </p>
+                                    <p style="margin: 0 0 24px">
+                                        Don't forward this link or I will smite you.
+                                        <br />&ndash; The Angad Bot
+                                    </p>
+                                    <table
+                                        role="presentation"
+                                        width="100%"
+                                        cellpadding="0"
+                                        cellspacing="0"
+                                        border="0"
+                                    >
+                                        <tr>
+                                            <td
+                                                class="email-rule email-secondary"
+                                                style="
+                                                    border-top: 1px solid #c6c6c6;
+                                                    padding-top: 16px;
+                                                    color: #6f6f6f;
+                                                    font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif;
+                                                    font-size: 12px;
+                                                    line-height: 16px;
+                                                "
+                                            >
+                                                One Angad Account for everything Angad.
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                        </table>
+                        <!--[if mso]>
+                        </td></tr></table>
+                        <![endif]-->
+                    </td>
+                </tr>
+            </table>
+        </div>
     </body>
 </html>

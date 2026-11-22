@@ -4,11 +4,8 @@
   "workspaces": {
     "": {
       "name": "angad-idp",
-      "dependencies": {
-        "date-fns": "^4.4.0",
-        "temporal-zod": "^0.8.0",
-      },
       "devDependencies": {
+        "@battlefieldduck/turnstile-svelte": "^1.0.1",
         "@ianvs/prettier-plugin-sort-imports": "^4.7.1",
         "@paralleldrive/cuid2": "^3.3.0",
         "@sveltejs/adapter-static": "^4.0.1",
@@ -23,6 +20,7 @@
         "carbon-icons-svelte": "^13.18.0",
         "carbon-preprocess-svelte": "^0.11.61",
         "clsx": "^2.1.1",
+        "date-fns": "^4.4.0",
         "fzf": "^0.5.2",
         "neverthrow": "^8.2.0",
         "prettier": "^3.10.1",
@@ -35,6 +33,7 @@
         "tailwind-merge": "^3.7.0",
         "tailwindcss": "^4.3.5",
         "temporal-polyfill": "^1.0.8",
+        "temporal-zod": "^0.8.0",
         "typescript": "^6.0.3",
         "vite": "^8.3.8",
         "zod": "^4.6.7",
@@ -60,6 +59,8 @@
     "@babel/traverse": ["@babel/traverse@7.29.14", "", { "dependencies": { "@babel/code-frame": "^7.29.7", "@babel/generator": "^7.29.14", "@babel/helper-globals": "^7.29.7", "@babel/parser": "^7.29.14", "@babel/template": "^7.29.7", "@babel/types": "^7.29.14", "debug": "^4.3.1" } }, "sha512-RAdQJrBgmIH1FWvN0X+1hoDxzMzlP4cv/1Zi4dn4tG1H0cTb+rw7CzUxQJhp1f4ANd8j5vH3fy8BAWFGkBDEsA=="],
 
     "@babel/types": ["@babel/types@7.29.14", "", { "dependencies": { "@babel/helper-string-parser": "^7.29.14", "@babel/helper-validator-identifier": "^7.29.7" } }, "sha512-UjI/dKmwJwT9pOszJitq2G6EObZPnsZUfdCr92z2TlF3EZK9J3EdfOKUrCzHl6wFthbzwhzl1Soc/UIwxRiq6w=="],
+
+    "@battlefieldduck/turnstile-svelte": ["@battlefieldduck/turnstile-svelte@1.0.1", "", { "peerDependencies": { "svelte": "^5.0.0" } }, "sha512-v1jbzHx5bYOwFD0olhkKeYOLl9myh9LQMv+QCIBqXY6prY6STo/jRYWIItx9PINCWRwWMwR8gLSWhxvL1aBHuA=="],
 
     "@bufbuild/protobuf": ["@bufbuild/protobuf@2.17.0", "", {}, "sha512-hcPkSz6D7MiTU/5VBBhK+kxaYDoOdQ6yJRFJ3kS8Nydp+VZXfg1vrpABKPNod8bXMufsVCmiUJVIKFzCzta4uw=="],
 

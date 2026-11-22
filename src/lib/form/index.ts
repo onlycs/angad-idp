@@ -54,6 +54,13 @@ export class FormBuilder<I extends Items> {
         return new FormBuilder({ ...this.items, [key]: item } as With<I, K, V>, this.validators);
     }
 
+    manual<K extends string, Z extends z.ZodType>(
+        key: K extends keyof I | "sourceless" ? never : K,
+        z: Z,
+    ) {
+        return this.add(key, f.manual(z));
+    }
+
     add_validate(fn: Validator<I>): FormBuilder<I> {
         return new FormBuilder(this.items, [...this.validators, fn]);
     }

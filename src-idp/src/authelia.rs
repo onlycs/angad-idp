@@ -286,13 +286,20 @@ fn make_ed25519() -> Result<String, AutheliaError> {
         .map(|it| it.to_string())
 }
 
+pub(crate) async fn sign_key() -> Result<SigningKey, AutheliaError> {
+    let path = &*common::AUTHELIA_CONFIG_DIR;
+    let ed25519 = path.join("ed25519.pem");
+    let pem = pem(ed25519, make_ed25519).await?;
+    SigningKey::from_pkcs8_pem(&pem).context(EdImportSnafu)
+}
+
 pub(crate) async fn verify_key() -> Result<DecodingKey, AutheliaError> {
     let path = &*common::AUTHELIA_CONFIG_DIR;
     let ed25519 = path.join("ed25519.pem");
     let pem = pem(ed25519, make_ed25519).await?;
     let sk = SigningKey::from_pkcs8_pem(&pem).context(EdImportSnafu)?;
-    let pk = sk.verifying_key().to_bytes();
-    Ok(DecodingKey::from_ed_der(&pk))
+    let pk = sk.verifying_key();
+    Ok(DecodingKey::from_ed_der(pk.as_bytes()))
 }
 
 pub(crate) async fn regenerate(pg: impl PgRef) {

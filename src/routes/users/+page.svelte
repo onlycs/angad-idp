@@ -7,12 +7,7 @@
 
     import { mktransit } from "$lib/network.svelte";
     import oauth2 from "$lib/oauth2";
-    import {
-        route_application_list,
-        route_invite_list,
-        route_user_list,
-        type Application,
-    } from "$lib/wasm";
+    import { route_application_list, route_invite_list, route_user_list } from "$lib/wasm";
 
     const token = oauth2.persist.token();
     const api = mktransit();

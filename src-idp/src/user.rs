@@ -66,9 +66,9 @@ pub(crate) async fn check_password(
         WHERE
             id = $1 OR
             username = $1 OR
-            email = $1
+            email = lower($1)
         "#,
-        query_unknown
+        query_unknown.trim()
     )
     .fetch_optional(&*pg)
     .await
@@ -217,6 +217,7 @@ pub(crate) async fn update(req: UserUpdateRequest, pg: Arc<PgPool>) -> Result<()
                 .context(AuthErrorCast::<UserUpdateError>)?;
 
             let AuthenticateSelfStrict { uid, .. } = auth;
+            let email = email.map(|it| it.trim().to_lowercase());
 
             snafu::ensure!(
                 username

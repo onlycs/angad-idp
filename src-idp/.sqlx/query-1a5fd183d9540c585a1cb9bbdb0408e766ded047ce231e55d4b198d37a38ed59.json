@@ -1,16 +1,16 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT password_hash FROM users\n        WHERE\n            id = $1 OR\n            username = $1 OR\n            email = $1\n        ",
+  "query": "SELECT id FROM users WHERE lower(email) = lower($1)",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "password_hash",
+        "name": "id",
         "type_info": "Text",
         "origin": {
           "Table": {
             "table": "users",
-            "name": "password_hash"
+            "name": "id"
           }
         }
       }
@@ -24,5 +24,5 @@
       false
     ]
   },
-  "hash": "1400d4c6e55ab1f4281919fe536ea768ba13403029e98b58e9ae929cc96e2609"
+  "hash": "1a5fd183d9540c585a1cb9bbdb0408e766ded047ce231e55d4b198d37a38ed59"
 }

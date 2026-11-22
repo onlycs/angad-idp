@@ -28,7 +28,7 @@
             .filter((it) => !!it.error)
             .map((it) => ({
                 message: it.error!,
-                onclose: it.clear_error,
+                onclose: () => it.clear_error(),
                 source: it as ApiState<T[keyof T]>,
             })),
     );

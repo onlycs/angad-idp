@@ -20,12 +20,12 @@
         form,
         render,
         submit: owner_submit,
-        notifications: owner_notifications,
+        messages = mkmessages(),
         loading = $bindable(false),
     }: {
         form: Form<I>;
         submit: (value: FormValue<I>, endload: () => unknown) => unknown;
-        notifications?: MessagesState;
+        messages?: MessagesState;
         loading?: boolean;
         render: Snippet<
             [
@@ -123,18 +123,16 @@
     });
     let errors = $state<FormErrors>({});
 
-    const validation = mkmessages();
-
     async function handle_submit() {
         loading = true;
         errors = {};
-        validation.messages.clear();
+        messages.clear();
 
         const res = await errors_of(partial);
         if (res.error) {
             const { sourceless, ...field_errors } = res.errors;
             errors = field_errors as FormErrors;
-            for (const message of sourceless ?? []) validation.push(message);
+            for (const message of sourceless ?? []) messages.push(message);
 
             loading = false;
             return;
@@ -145,10 +143,9 @@
 
     export const submit: () => unknown = handle_submit;
     export const reset: () => unknown = () => (reset_trigger = !untrack(() => reset_trigger));
+    export const values = () => partial;
 
-    let num_sourceless = $derived(
-        validation.messages.size + (owner_notifications?.messages.size ?? 0),
-    );
+    let num_sourceless = $derived(messages.size);
 </script>
 
 {#snippet field<K extends RenderedKey<I>>(key: K, extraProps?: Partial<I[K]["props"]>)}
@@ -210,11 +207,7 @@
 {/snippet}
 
 {#snippet sourceless()}
-    <StatusMessages state={validation} />
-
-    {#if owner_notifications}
-        <StatusMessages state={owner_notifications} />
-    {/if}
+    <StatusMessages state={messages} />
 {/snippet}
 
 {@render render(field, num_sourceless != 0 ? sourceless : undefined, partial, handle_submit)}

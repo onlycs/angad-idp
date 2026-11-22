@@ -140,13 +140,7 @@
     fullWidth
     selectorPrimaryFocus={null}
 >
-    <ValidatedForm
-        {form}
-        {submit}
-        notifications={messages}
-        bind:this={form_elem}
-        bind:loading={is_loading}
-    >
+    <ValidatedForm {form} {submit} {messages} bind:this={form_elem} bind:loading={is_loading}>
         {#snippet render(field, sourceless, manual)}
             <div class="notifications">
                 {@render sourceless?.()}

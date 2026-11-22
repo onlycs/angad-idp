@@ -59,7 +59,7 @@ error! {
     InviteUpdateError = InvalidExpiry | NoInvite | NoApplication | Denied;
     InviteListError = Denied;
     InviteDeleteError = NoInvite | Denied;
-    InviteUseError = NoInvite | InviteExpired | InvalidUsername | UsernameInUse | InsecurePassword;
+    InviteUseError = NoInvite | InviteExpired | InvalidUsername | UsernameInUse | EmailInUse | InsecurePassword;
 }
 
 route! {

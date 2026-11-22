@@ -194,6 +194,9 @@ static_env!(
     AUTHELIA_URL as Url via env_parse_url;
     AUTHELIA_CONFIG_DIR as PathBuf via env_parse_dirpath;
 
+    TURNSTILE_PUBLIC;
+    TURNSTILE_SECRET;
+
     #[cfg(feature = "k8s")]
     AUTHELIA_NAMESPACE or try {
         cfg_select! {

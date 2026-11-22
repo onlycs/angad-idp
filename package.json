@@ -11,6 +11,7 @@
         "postinstall": "make postinstall"
     },
     "devDependencies": {
+        "@battlefieldduck/turnstile-svelte": "^1.0.1",
         "@ianvs/prettier-plugin-sort-imports": "^4.7.1",
         "@paralleldrive/cuid2": "^3.3.0",
         "@sveltejs/adapter-static": "^4.0.1",

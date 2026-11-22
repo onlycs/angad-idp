@@ -58,6 +58,7 @@ pub(crate) async fn create_impl(
     let key = common::generate_secret()?;
     let key_hash = common::sha256(&key);
     let token = hex::encode(key);
+    let email = email.trim().to_lowercase();
 
     snafu::ensure!(EMAIL_RE.is_match(&email), InvalidEmail);
     snafu::ensure!(expiry > chrono::Utc::now(), InvalidExpiry);
@@ -108,7 +109,7 @@ pub(crate) async fn create_impl(
             None,
             common::parse_email(&email).context(TransitErrorContext!(InvalidEmail))?,
         ))
-        .subject("Invitiation to Angad Auth")
+        .subject("Invitation to Angad")
         .header(ContentType::TEXT_HTML)
         .body(
             include_str!("../templates/invite-email-template.html").replace(
@@ -332,7 +333,11 @@ pub(crate) async fn redeem(
     {
         Ok(_) => {}
         Err(sqlx::Error::Database(db)) if db.is_unique_violation() => {
-            return Err(UsernameInUse.into());
+            return Err(match db.constraint() {
+                Some("users_username_key") => UsernameInUse.into(),
+                Some("users_email_key" | "users_email_lower_key") => EmailInUse.into(),
+                _ => InternalError!(ctx(display db), common::ERROR_DB).into(),
+            });
         }
         Err(other) => {
             return Err(InternalError!(ctx(display other), common::ERROR_DB).into());

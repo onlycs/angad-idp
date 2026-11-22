@@ -6,7 +6,7 @@ authentication_backend:
   refresh_interval: 5 minutes
   password_reset:
     disable: true
-    custom_url: "{{ &*FRONTEND_URL }}/forgot"
+    custom_url: "{{ &*FRONTEND_URL }}forgot"
   password_change:
     disable: true
   ldap:

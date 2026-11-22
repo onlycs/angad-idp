@@ -21,11 +21,18 @@
     import { AUTHELIA_URL } from "$lib/oauth2";
     import type { PersistedToken } from "$lib/oauth2/persists.svelte";
 
-    export type HeaderProps = {
-        token: PersistedToken;
+    export type HeaderProps = (
+        | {
+              token: PersistedToken;
+              landing?: false;
+          }
+        | {
+              landing: true;
+              token?: undefined;
+          }
+    ) & {
         side_links?: Snippet;
         header_actions?: Snippet;
-        landing?: boolean;
     };
 
     const { token, side_links, header_actions, landing }: HeaderProps = $props();
@@ -63,7 +70,7 @@
 </svelte:head>
 
 {#snippet items()}
-    {#each Object.entries(token.admin() ? admin : standard) as [url, title]}
+    {#each Object.entries(token?.admin() ? admin : standard) as [url, title]}
         <HeaderNavItem href={url} text={title} isSelected={window.location.pathname == url} />
     {/each}
 {/snippet}

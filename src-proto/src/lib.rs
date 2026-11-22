@@ -8,6 +8,7 @@ uniffi::setup_scaffolding!("proto");
 
 pub mod app;
 pub mod auth;
+pub mod forgot;
 pub mod integration;
 pub mod invite;
 pub mod user;

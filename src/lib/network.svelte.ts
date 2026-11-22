@@ -116,10 +116,18 @@ export class TransitWrapper {
         F extends (...args: any[]) => Promise<TransitResult<infer T, infer E>>
             ? ApiResult<T, E>
             : never
-    > {
+    >;
+    async route<F extends (transit: Transit) => Promise<TransitResult<unknown, unknown>>>(
+        f: F,
+    ): Promise<
+        F extends (...args: any[]) => Promise<TransitResult<infer T, infer E>>
+            ? ApiResult<T, E>
+            : never
+    >;
+    async route(f: any, req?: any): Promise<any> {
         try {
             if (!_instance) await this.tryInit(true);
-            const res = await f(_instance!, req as T);
+            const res = await f(_instance!, req);
             if ("Err" in res) return new Err(res.Err) as any;
             else return new Ok(res.Ok) as any;
         } catch (e) {

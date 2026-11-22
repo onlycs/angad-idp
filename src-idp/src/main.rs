@@ -13,6 +13,7 @@ use idp_proto::{
         ApplicationCreate, ApplicationCreateError, ApplicationDelete, ApplicationList,
         ApplicationOidcSupplied, ApplicationSupplied, ApplicationUpdate, Membership,
     },
+    forgot::{ForgotCaptcha, ForgotReset, ForgotSendEmail},
     integration::{
         IntegrationAuthorize, IntegrationCreate, IntegrationDelete, IntegrationList,
         IntegrationUpdate,
@@ -41,6 +42,7 @@ mod app;
 mod auth;
 mod authelia;
 mod common;
+mod forgot;
 mod integration;
 mod invite;
 mod user;
@@ -213,6 +215,10 @@ async fn main() -> Result<(), StartupError> {
         .route::<UserList, _>(user::list)
         .route::<UserUpdate, _>(user::update)
         .route::<UserDelete, _>(user::delete)
+        // Forgot Password
+        .route_stateless::<ForgotCaptcha, _>(forgot::captcha)
+        .route::<ForgotSendEmail, _>(forgot::send_email)
+        .route::<ForgotReset, _>(forgot::reset)
         .build();
 
     let ip = common::LISTEN_ADDRESS.parse().context(AddrParseSnafu)?;

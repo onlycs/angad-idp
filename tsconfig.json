@@ -1,5 +1,5 @@
 {
     "extends": "$app/tsconfig",
     "include": ["src"],
-    "exclude": ["src/wasm"],
+    "exclude": ["src/wasm"]
 }

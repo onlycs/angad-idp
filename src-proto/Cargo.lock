@@ -1496,9 +1496,9 @@ dependencies = [
 
 [[package]]
 name = "toml_parser"
-version = "1.1.5+spec-1.1.0"
+version = "1.1.6+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "baa693a8032d7e1cada7d0041e96126df243179ff061456783ac7f12bda4744c"
+checksum = "e6769c452d71ba30696c6b37770c439a9cc9110f47f7d5cdbeda79840ef5ea31"
 dependencies = [
  "winnow 1.0.5",
 ]
@@ -1569,7 +1569,7 @@ dependencies = [
 [[package]]
 name = "transit-async-io"
 version = "0.2.0"
-source = "git+https://codeberg.org/tendulkar/transit#14a63cffc2774d0eee42277b30ad318ef9742de9"
+source = "git+https://codeberg.org/tendulkar/transit#e11ef787ac8a7db0c2331aa53a5654ebc324c0fa"
 dependencies = [
  "async-executor",
  "async-io",
@@ -1579,7 +1579,7 @@ dependencies = [
 [[package]]
 name = "transit-client"
 version = "0.2.0"
-source = "git+https://codeberg.org/tendulkar/transit#14a63cffc2774d0eee42277b30ad318ef9742de9"
+source = "git+https://codeberg.org/tendulkar/transit#e11ef787ac8a7db0c2331aa53a5654ebc324c0fa"
 dependencies = [
  "async-lock",
  "bitcode",
@@ -1596,7 +1596,7 @@ dependencies = [
 [[package]]
 name = "transit-core"
 version = "0.2.0"
-source = "git+https://codeberg.org/tendulkar/transit#14a63cffc2774d0eee42277b30ad318ef9742de9"
+source = "git+https://codeberg.org/tendulkar/transit#e11ef787ac8a7db0c2331aa53a5654ebc324c0fa"
 dependencies = [
  "bilge",
  "bitcode",
@@ -1618,7 +1618,7 @@ dependencies = [
 [[package]]
 name = "transit-ffi"
 version = "0.2.0"
-source = "git+https://codeberg.org/tendulkar/transit#14a63cffc2774d0eee42277b30ad318ef9742de9"
+source = "git+https://codeberg.org/tendulkar/transit#e11ef787ac8a7db0c2331aa53a5654ebc324c0fa"
 dependencies = [
  "rustls-pemfile",
  "snafu",
@@ -1635,7 +1635,7 @@ dependencies = [
 [[package]]
 name = "transit-macros"
 version = "0.2.0"
-source = "git+https://codeberg.org/tendulkar/transit#14a63cffc2774d0eee42277b30ad318ef9742de9"
+source = "git+https://codeberg.org/tendulkar/transit#e11ef787ac8a7db0c2331aa53a5654ebc324c0fa"
 dependencies = [
  "heck",
  "itertools",
@@ -1647,7 +1647,7 @@ dependencies = [
 [[package]]
 name = "transit-reflect"
 version = "0.2.0"
-source = "git+https://codeberg.org/tendulkar/transit#14a63cffc2774d0eee42277b30ad318ef9742de9"
+source = "git+https://codeberg.org/tendulkar/transit#e11ef787ac8a7db0c2331aa53a5654ebc324c0fa"
 dependencies = [
  "type-signature",
  "xxhash-rust",
@@ -1656,7 +1656,7 @@ dependencies = [
 [[package]]
 name = "transit-rt"
 version = "0.2.0"
-source = "git+https://codeberg.org/tendulkar/transit#14a63cffc2774d0eee42277b30ad318ef9742de9"
+source = "git+https://codeberg.org/tendulkar/transit#e11ef787ac8a7db0c2331aa53a5654ebc324c0fa"
 dependencies = [
  "event-listener",
  "futures",
@@ -1666,7 +1666,7 @@ dependencies = [
 [[package]]
 name = "transit-tcp"
 version = "0.2.0"
-source = "git+https://codeberg.org/tendulkar/transit#14a63cffc2774d0eee42277b30ad318ef9742de9"
+source = "git+https://codeberg.org/tendulkar/transit#e11ef787ac8a7db0c2331aa53a5654ebc324c0fa"
 dependencies = [
  "async-net",
  "futures",
@@ -1681,7 +1681,7 @@ dependencies = [
 [[package]]
 name = "transit-tls"
 version = "0.2.0"
-source = "git+https://codeberg.org/tendulkar/transit#14a63cffc2774d0eee42277b30ad318ef9742de9"
+source = "git+https://codeberg.org/tendulkar/transit#e11ef787ac8a7db0c2331aa53a5654ebc324c0fa"
 dependencies = [
  "futures",
  "futures-rustls",
@@ -1699,7 +1699,7 @@ dependencies = [
 [[package]]
 name = "transit-wasm"
 version = "0.2.0"
-source = "git+https://codeberg.org/tendulkar/transit#14a63cffc2774d0eee42277b30ad318ef9742de9"
+source = "git+https://codeberg.org/tendulkar/transit#e11ef787ac8a7db0c2331aa53a5654ebc324c0fa"
 dependencies = [
  "async_io_stream",
  "futures",

@@ -69,10 +69,12 @@
         }, 1500);
     }
 
-    afterNavigate(() => {
+    afterNavigate(({ shallow }) => {
+        if (shallow) return;
+
         (async () => {
             const params = new URLSearchParams(location.search);
-            if (params.size > 0) clear_query();
+            clear_query();
 
             const q = query.decode(params);
             mode = q ?? "idle";
@@ -99,7 +101,7 @@
 </script>
 
 {#if !token.exists()}
-    <Header {token} landing />
+    <Header landing />
 
     <main id="login">
         <Flow
@@ -108,8 +110,10 @@
             padded={typeof mode !== "object"}
         >
             {#snippet buttons()}
-                <Button kind="ghost" disabled={mode === "loading"}>I forgot my password</Button>
-                <Button icon={ArrowRight} onclick={login} loading={mode === "loading"}>
+                <Button kind="ghost" on:click={() => goto("/forgot")} disabled={mode === "loading"}>
+                    I forgot my password
+                </Button>
+                <Button icon={ArrowRight} on:click={login} loading={mode === "loading"}>
                     Log in
                 </Button>
             {/snippet}
@@ -127,6 +131,5 @@
     #login {
         @apply flex items-center justify-center;
         @apply h-screen w-screen;
-        @apply select-none;
     }
 </style>
