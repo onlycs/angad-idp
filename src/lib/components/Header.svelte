@@ -37,7 +37,7 @@
 
     const { token, side_links, header_actions, landing }: HeaderProps = $props();
     let isSideNavOpen = $state(false);
-    const hasSideNav = $derived(!!landing && (!!side_links || (innerWidth.current ?? 0) < 1056));
+    const hasSideNav = $derived(!landing && (!!side_links || (innerWidth.current ?? 0) < 1056));
 
     const admin: Record<string, string> = {
         "/apps": "Applications",
