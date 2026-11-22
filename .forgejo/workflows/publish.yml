@@ -1,0 +1,45 @@
+name: images
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            context: .
+            file: Dockerfile.api
+          - name: ldap
+            context: .
+            file: Dockerfile.ldap
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Codeberg registry
+        run: |
+          echo "${{ secrets.REGISTRY_TOKEN }}" |
+            docker login codeberg.org -u "${{ vars.REGISTRY_USER }}" --password-stdin
+
+      - name: Build and push
+        env:
+          NAME: ${{ matrix.name }}
+          FILE: ${{ matrix.file }}
+          CONTEXT: ${{ matrix.context }}
+          REPO: ${{ forgejo.repository }}
+          SHA: ${{ forgejo.sha }}
+          REF: ${{ forgejo.ref }}
+          REF_NAME: ${{ forgejo.ref_name }}
+        run: |
+          image="codeberg.org/${REPO,,}/${NAME}"
+          tags=(-t "$image:sha-${SHA::7}")
+          if [ "$REF" = "refs/heads/main" ]; then tags+=(-t "$image:latest"); fi
+          if [[ "$REF" == refs/tags/* ]]; then tags+=(-t "$image:${REF_NAME}"); fi
+
+          docker buildx build --file "$FILE" "${tags[@]}" --push "$CONTEXT"
