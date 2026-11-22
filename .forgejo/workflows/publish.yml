@@ -42,4 +42,5 @@ jobs:
           if [ "$REF" = "refs/heads/main" ]; then tags+=(-t "$image:latest"); fi
           if [[ "$REF" == refs/tags/* ]]; then tags+=(-t "$image:${REF_NAME}"); fi
 
+          make thirdparty
           docker buildx build --file "$FILE" "${tags[@]}" --push "$CONTEXT"

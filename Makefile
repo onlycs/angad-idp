@@ -78,7 +78,7 @@ build: api wasm ldap
 precommit:
 	cd src-idp && rm -rf .sqlx && cargo sqlx prepare
 
-docker: precommit
+docker: precommit thirdparty
 	docker compose build
 
 update:
