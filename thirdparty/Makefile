@@ -9,7 +9,7 @@ sqlx: Makefile sqlx-join-type-inference.patch
 	mkdir sqlx
 	cd sqlx && git init . && git remote add origin https://github.com/launchbadge/sqlx
 	cd sqlx && git fetch --depth 1 origin 75bc0487eb661da811bb7a3c5d158f1bd463fef4 && git checkout --detach FETCH_HEAD
-	cd sqlx && cat ../sqlx-join-type-inference.patch | git am -3 --no-gpg-sign
+	cd sqlx && cat ../sqlx-join-type-inference.patch | git -c user.name=build -c user.email=build@localhost am -3 --no-gpg-sign
 
 # just in case
 # carbon-components-svelte: Makefile carbon-bugfixes.patch
