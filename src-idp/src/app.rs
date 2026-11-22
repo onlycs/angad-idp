@@ -7,7 +7,7 @@ use idp_proto::{
 };
 use itertools::Itertools;
 use snafu::prelude::*;
-use sqlx::PgPool;
+use sqlx::{PgExecutor, PgPool};
 use transit_core::{InternalError, InternalErrorContext, error};
 
 use crate::{
@@ -23,7 +23,10 @@ error! {
     VerifyError = NoApplication;
 }
 
-pub(crate) async fn verify(slugs: &[String], pg: &PgPool) -> Result<(), VerifyError> {
+pub(crate) async fn verify<'a>(
+    slugs: &[String],
+    pg: impl PgExecutor<'a>,
+) -> Result<(), VerifyError> {
     sqlx::query_scalar!(
         r#"
         SELECT requested.slug
@@ -102,11 +105,10 @@ pub(crate) async fn create_impl(
         .await
         .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
-    let result = sqlx::query!(
+    match sqlx::query!(
         r#"
         INSERT INTO applications (slug, name, url)
         VALUES ($1, $2, $3)
-        ON CONFLICT DO NOTHING
         "#,
         slug,
         name,
@@ -114,10 +116,15 @@ pub(crate) async fn create_impl(
     )
     .execute(&mut *tx)
     .await
-    .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
-
-    if result.rows_affected() == 0 {
-        return Err(SlugInUse.into());
+    {
+        Ok(_) => {}
+        Err(err) => match err {
+            sqlx::Error::Database(db) if db.is_unique_violation() => match db.constraint() {
+                Some("applications_name_key") => return Err(AppNameInUse.into()),
+                _ => return Err(SlugInUse.into()),
+            },
+            err => return Err(InternalError!(ctx(display err), common::ERROR_DB).into()),
+        },
     }
 
     if let Some(oidc) = oidc {
@@ -340,6 +347,13 @@ pub(crate) async fn update(
 
             if public == ApplicationPublicUpdate::RollClientSecret && res_oidc.public {
                 return Err(NotPrivate { slug }.into());
+            }
+
+            if let Some(uri) = redirect_uris
+                .as_ref()
+                .and_then(|it| it.iter().find(|it| !common::is_uri(it)))
+            {
+                return Err(InvalidRedirectUri { uri: uri.clone() }.into());
             }
 
             if let ApplicationPublicUpdate::Set(to) = public

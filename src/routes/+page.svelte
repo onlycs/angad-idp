@@ -11,6 +11,13 @@
             return params;
         },
 
+        async goto(q?: Query): Promise<never> {
+            if (!q) await goto("/");
+            else await goto(`/?${query.encode(q)}`);
+
+            return new Promise<never>(() => {});
+        },
+
         decode(params: URLSearchParams): StrictQuery | null {
             const message = params.get("message");
             if (!message) return null;

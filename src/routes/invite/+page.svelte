@@ -40,8 +40,7 @@
     let loading = $state(false);
 
     async function leave(query?: login.Query) {
-        if (query) await goto(`/?${login.query.encode(query).toString()}`);
-        else await goto("/");
+        return await login.query.goto(query);
     }
 
     async function submit(z: z.output<typeof form.z>) {
@@ -77,6 +76,10 @@
 
     let form_elem = $state<ValidatedForm<typeof form.items>>();
 </script>
+
+<svelte:head>
+    <title>Welcome | Angad Auth</title>
+</svelte:head>
 
 <Header companyName="Angad" platformName="IdP" href="/" />
 

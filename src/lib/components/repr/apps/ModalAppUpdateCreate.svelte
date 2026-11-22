@@ -199,6 +199,7 @@
                 slug: submitted.slug,
                 name: submitted.name,
                 oidc: oidc,
+                url: submitted.url,
             };
 
             res = await api.route(route_application_update, q);

@@ -106,14 +106,6 @@
     }
 </script>
 
-{#snippet pwned()}
-    You should change this password if you use it often.
-
-    <OutboundLink href="https://haveibeenpwned.com/FAQs#PwnedPasswordFound">
-        Learn more
-    </OutboundLink>
-{/snippet}
-
 <Header landing />
 
 <main id="forgot">

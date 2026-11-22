@@ -90,7 +90,7 @@
                         </HeaderPanelLink>
                     {/each}
                     <HeaderPanelDivider />
-                    <HeaderPanelLink on:click={() => token.clear()}>Log out</HeaderPanelLink>
+                    <HeaderPanelLink on:click={() => token.logout()}>Log out</HeaderPanelLink>
                 </HeaderPanelLinks>
             </HeaderAction>
         </HeaderUtilities>

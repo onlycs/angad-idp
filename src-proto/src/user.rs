@@ -55,7 +55,6 @@ error! {
 
     CheckPasswordError = NoUser | IncorrectPassword;
     UserListError = Denied;
-    UserSearchError = NoUser | Denied;
     UserUpdateError = NoUser | InvalidUsername | InvalidEmail | InsecurePassword | UsernameInUse | EmailInUse | NoApplication | SelfDeprivilege | Denied;
     UserDeleteError = NoUser | LastDomainAdmin | Denied;
 }

@@ -211,6 +211,8 @@ pub(crate) async fn update(
     let exp = exp.map(parse_expiry).transpose()?;
     let split_roles = memberships.as_mut().map(app::split_and_fix);
 
+    snafu::ensure!(exp.is_none_or(|it| it > chrono::Utc::now()), InvalidExpiry);
+
     let mut tx = pg
         .begin()
         .await
@@ -231,6 +233,10 @@ pub(crate) async fn update(
     snafu::ensure!(res.rows_affected() > 0, NoInvite);
 
     if let Some((role_slugs, role_admins)) = split_roles {
+        app::verify(role_slugs.as_slice(), &mut *tx)
+            .await
+            .context(VerifyErrorCast::<InviteUpdateError>)?;
+
         sqlx::query!(
             r#"
             DELETE FROM invite_roles

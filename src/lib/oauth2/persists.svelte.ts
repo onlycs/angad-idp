@@ -1,5 +1,3 @@
-import { goto } from "$app/navigation";
-
 import { Err, Ok, type Result } from "neverthrow";
 
 import type { AnyTransitError } from "$lib/network.svelte";
@@ -68,6 +66,17 @@ export class PersistedToken {
 
     set value(token: AutheliaToken) {
         this.inner.value = token;
+    }
+
+    async logout() {
+        const t = this.inner.value;
+        if (t) {
+            await Promise.all([
+                oauth2.revoke(t.tokens.refresh, "refresh_token"),
+                oauth2.revoke(t.tokens.access, "access_token"),
+            ]);
+        }
+        await this.leave();
     }
 
     clear() {
@@ -156,9 +165,6 @@ export class PersistedToken {
 
     private async leave(params?: index.Query): Promise<never> {
         this.clear();
-        if (!params) await goto("/");
-        else await goto(`/?${index.query.encode(params).toString()}`);
-
-        return new Promise<never>(() => {});
+        return await index.query.goto(params);
     }
 }

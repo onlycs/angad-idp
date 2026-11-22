@@ -94,7 +94,7 @@
             await messages.handle_api(
                 res,
                 token,
-                rest.create ? undefined : "Successfully updated invite",
+                rest.create ? undefined : "Successfully updated integration",
             )
         ) {
             return await submit(out);

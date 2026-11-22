@@ -1,4 +1,6 @@
 <script lang="ts">
+    import { goto } from "$app/navigation";
+
     import {
         Box,
         Button,
@@ -15,16 +17,18 @@
     import ValidatedForm from "$components/form/ValidatedForm.svelte";
     import Header from "$components/Header.svelte";
 
-    import { mkmessages } from "$lib/components/utility/StatusMessages.svelte";
+    import StatusMessages, { mkmessages } from "$lib/components/utility/StatusMessages.svelte";
     import { f } from "$lib/form";
     import { mktransit } from "$lib/network.svelte";
     import oauth2 from "$lib/oauth2";
-    import { route_user_update } from "$lib/wasm";
+    import { route_user_delete, route_user_update } from "$lib/wasm";
+    import * as index from "$routes/+page.svelte";
 
     const api = mktransit();
     const token = oauth2.persist.token();
-    const messages_top = mkmessages();
-    const messages_bottom = mkmessages();
+    const messages_settings = mkmessages();
+    const messages_password = mkmessages();
+    const messages_delete = mkmessages();
     const form = $derived(
         f.form().add("username", f.username()).add("email", f.email()).build({
             username: token.value.user.preferred_username,
@@ -61,10 +65,10 @@
         });
 
         account_loading = false;
-        if (await messages_top.handle_api(res, token)) return await submit(out);
+        if (await messages_settings.handle_api(res, token)) return await submit(out);
         if (res.isErr()) return;
 
-        messages_top.success("Successfully updated user info");
+        messages_settings.success("Successfully updated user info");
     }
     async function password(out: z.output<typeof f_password.z>) {
         const previous = await new Promise<string>((res) => (require_password = res));
@@ -78,10 +82,27 @@
         });
 
         password_loading = false;
-        if (await messages_bottom.handle_api(res, token)) return await password(out);
+        if (await messages_password.handle_api(res, token)) return await password(out);
         if (res.isErr()) return;
 
-        messages_bottom.success("Successfully updated password");
+        messages_password.success("Successfully updated password");
+    }
+    async function actdel() {
+        const password = await new Promise<string>((res) => (require_password = res));
+
+        const res = await api.route(route_user_delete, {
+            tag: "delete_self",
+            auth: token.into_api_strict(password),
+            uid: token.user.uid,
+        });
+
+        if (await messages_delete.handle_api(res, token)) return await actdel();
+        if (res.isErr()) return;
+
+        await index.query.goto({
+            kind: "success",
+            subtitle: "Account deleted successfully",
+        });
     }
 </script>
 
@@ -116,7 +137,7 @@
         <Text type="label-02">Change your profile information for all Angad services</Text>
     </Box>
     <Box marginTop={8}>
-        <ValidatedForm {form} {submit} messages={messages_top} bind:loading={account_loading}>
+        <ValidatedForm {form} {submit} messages={messages_settings} bind:loading={account_loading}>
             {#snippet render(field, messages, _m, controls)}
                 <Form>
                     <Stack gap={7}>
@@ -156,7 +177,7 @@
     <Box marginTop={8}>
         <ValidatedForm
             form={f_password}
-            messages={messages_bottom}
+            messages={messages_password}
             submit={password}
             bind:loading={password_loading}
         >
@@ -188,5 +209,13 @@
                 </Form>
             {/snippet}
         </ValidatedForm>
+    </Box>
+
+    <Box marginTop={10}>
+        <Stack gap={4}>
+            <Text type="heading-03">Delete my account</Text>
+            <StatusMessages state={messages_delete} />
+            <Button kind="danger" on:click={actdel}>Delete my account</Button>
+        </Stack>
     </Box>
 </Content>

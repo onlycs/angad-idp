@@ -137,13 +137,14 @@ pub(crate) async fn update(req: UserUpdateRequest, pg: Arc<PgPool>) -> Result<()
                 .context(AuthErrorCast::<UserUpdateError>)?;
 
             snafu::ensure!(
-                user_token.is_none() || memberships.iter().any(Membership::is_domain_admin),
+                (user_token.is_some_and(|t| t.uid == uid)
+                    && !memberships.iter().any(Membership::is_domain_admin)),
                 SelfDeprivilege
             );
 
             let (slugs, admins) = app::split_and_fix(&mut memberships);
 
-            app::verify(slugs.as_slice(), &pg)
+            app::verify(slugs.as_slice(), &*pg)
                 .await
                 .context(VerifyErrorCast::<UserUpdateError>)?;
 
@@ -233,7 +234,15 @@ pub(crate) async fn update(req: UserUpdateRequest, pg: Arc<PgPool>) -> Result<()
             let mut update_password = None;
 
             if let Some(pw) = password {
-                ensure_password_strength(&pw, &[])?;
+                let mut v = Vec::with_capacity(2);
+                if let Some(u) = &username {
+                    v.push(u.as_str());
+                }
+                if let Some(e) = &email {
+                    v.push(e.as_str());
+                }
+
+                ensure_password_strength(&pw, v.as_slice())?;
                 update_password = Some(hash_password(&pw)?)
             }
 

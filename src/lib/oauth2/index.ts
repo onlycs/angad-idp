@@ -188,10 +188,19 @@ async function refresh(token: string): Promise<Result<RefreshResponse, string>> 
     });
 }
 
+async function revoke(token: string, hint: "refresh_token" | "access_token") {
+    await fetch_safe(`${AUTHELIA_URL}/api/oidc/revocation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ token, token_type_hint: hint, client_id: CLIENT_ID }),
+    });
+}
+
 export default {
     persist,
     challenge,
     login_redirect,
     handle_callback,
     refresh,
+    revoke,
 };
