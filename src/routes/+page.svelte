@@ -70,7 +70,7 @@
             oauth_state: ch.state,
         };
 
-        const url = oauth2.login_redirect(ch);
+        const url = await oauth2.login_redirect(ch);
         setTimeout(() => {
             location.href = url.toString();
         }, 1500);
