@@ -88,4 +88,4 @@ update:
 thirdparty:
 	$(MAKE) -C thirdparty
 
-postinstall: wasm fmt
+postinstall: wasm
