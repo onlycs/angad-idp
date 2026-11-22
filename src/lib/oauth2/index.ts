@@ -12,7 +12,6 @@ export interface UserInfo {
     sub: string;
     uid: string;
     preferred_username: string;
-    name: string;
     email: string;
     groups: string[];
 }

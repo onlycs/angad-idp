@@ -6,7 +6,13 @@ import type { AnyTransitError } from "$lib/network.svelte";
 import type { AutheliaToken, LoginState } from "$lib/oauth2";
 import oauth2 from "$lib/oauth2";
 import { persist_session, persisted, type Persisted } from "$lib/persist.svelte";
-import { domain_slug, group_suffix_admin, type Authentication, type Denied } from "$lib/wasm";
+import {
+    domain_slug,
+    group_suffix_admin,
+    type AuthenticateSelfStrict,
+    type Authentication,
+    type Denied,
+} from "$lib/wasm";
 import * as index from "$routes/+page.svelte";
 
 export const login = () => persist_session<LoginState | null>("login", null);
@@ -72,6 +78,13 @@ export class PersistedToken {
         return {
             tag: "token",
             value: this.value.tokens.access,
+        };
+    }
+
+    into_api_strict(password: string): AuthenticateSelfStrict {
+        return {
+            uid: this.value.user.uid,
+            password,
         };
     }
 

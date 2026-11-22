@@ -35,7 +35,10 @@
                 ) => ReturnType<Snippet>,
                 sourceless: Snippet | undefined,
                 manual: Partial<FormValue<I>>,
-                submit: () => unknown,
+                control: {
+                    submit: () => unknown;
+                    reset: () => unknown;
+                },
             ]
         >;
     } = $props();
@@ -210,4 +213,4 @@
     <StatusMessages state={messages} />
 {/snippet}
 
-{@render render(field, num_sourceless != 0 ? sourceless : undefined, partial, handle_submit)}
+{@render render(field, num_sourceless != 0 ? sourceless : undefined, partial, { submit, reset })}

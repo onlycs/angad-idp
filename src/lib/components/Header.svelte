@@ -48,8 +48,8 @@
         "/apps": "My Apps",
     };
     const me: Record<string, string> = {
-        "/me/profile": "Profile",
-        "/me/security": "Security",
+        "/me": "Account Settings",
+        "/forgot": "Forgot Password",
     };
     me[`${AUTHELIA_URL}/settings/two-factor-authentication`] = "Two Factor Authentication";
 </script>
@@ -85,7 +85,9 @@
             <HeaderAction icon={UserAvatar}>
                 <HeaderPanelLinks>
                     {#each Object.entries(me) as [url, title]}
-                        <HeaderPanelLink href={url}>{title}</HeaderPanelLink>
+                        <HeaderPanelLink href={url} isSelected={window.location.pathname == url}>
+                            {title}
+                        </HeaderPanelLink>
                     {/each}
                     <HeaderPanelDivider />
                     <HeaderPanelLink on:click={() => token.clear()}>Log out</HeaderPanelLink>

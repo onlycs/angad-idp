@@ -87,28 +87,7 @@
                 placeholder: "••••••••••",
             }),
         )
-        .add_validate(async ({ password, confirm }) => {
-            if (password != confirm)
-                return [
-                    {
-                        field: "confirm",
-                        message: "Passwords do not match",
-                    },
-                ];
-
-            if (await haveibeenpwned(password)) {
-                return [
-                    {
-                        sourceless: {
-                            title: "Your password was in a data breach",
-                            subtitle: pwned,
-                        },
-                    },
-                ];
-            }
-
-            return [];
-        })
+        .add_validate(f.validate_password)
         .build();
     let f_reset_elem = $state<ValidatedForm<typeof f_reset.items>>();
     async function f_reset_submit(output: z.output<typeof f_reset.z>) {

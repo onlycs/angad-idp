@@ -96,7 +96,7 @@
 
     import { InlineNotification } from "carbon-components-svelte";
     import type { InlineNotificationProps } from "carbon-components-svelte/src/Notification/InlineNotification.svelte";
-    import type { Err, Ok } from "neverthrow";
+    import type { Ok } from "neverthrow";
 
     import StatusMessages from "$components/utility/StatusMessages.svelte";
 
@@ -134,12 +134,19 @@
     {@const { kind: maybeKind, onclose, title, subtitle, timeout_ms } = props}
     {@const kind = maybeKind ?? "error"}
 
-    <InlineNotification
-        {kind}
-        {title}
-        subtitle={typeof subtitle === "string" ? subtitle : undefined}
-        subtitleChildren={typeof subtitle === "string" ? undefined : subtitle}
-        on:close={() => onclose?.()}
-        timeout={timeout_ms}
-    />
+    {#if typeof subtitle === "string"}
+        <InlineNotification
+            {kind}
+            {title}
+            subtitle={typeof subtitle === "string" ? subtitle : undefined}
+            on:close={() => onclose?.()}
+            timeout={timeout_ms}
+        />
+    {:else}
+        <InlineNotification {kind} {title} on:close={() => onclose?.()} timeout={timeout_ms}>
+            {#snippet subtitleChildren()}
+                {@render subtitle()}
+            {/snippet}
+        </InlineNotification>
+    {/if}
 {/if}

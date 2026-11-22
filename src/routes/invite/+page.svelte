@@ -7,6 +7,7 @@
 
     import Flow from "$components/Flow.svelte";
     import ValidatedForm from "$components/form/ValidatedForm.svelte";
+    import { pwned } from "$components/Pwned.svelte";
     import { mkmessages } from "$components/utility/StatusMessages.svelte";
 
     import { cn } from "$lib";
@@ -29,28 +30,7 @@
                 placeholder: "••••••••••",
             }),
         )
-        .add_validate(async ({ password, confirm }) => {
-            if (password != confirm)
-                return [
-                    {
-                        field: "confirm",
-                        message: "Passwords do not match",
-                    },
-                ];
-
-            if (await haveibeenpwned(password)) {
-                return [
-                    {
-                        sourceless: {
-                            title: "Your password was in a data breach",
-                            subtitle: pwned,
-                        },
-                    },
-                ];
-            }
-
-            return [];
-        })
+        .add_validate(f.validate_password)
         .build();
 
     const api = mktransit();
@@ -97,14 +77,6 @@
 
     let form_elem = $state<ValidatedForm<typeof form.items>>();
 </script>
-
-{#snippet pwned()}
-    You should change this password if you use it often.
-
-    <OutboundLink href="https://haveibeenpwned.com/FAQs#PwnedPasswordFound">
-        Learn more
-    </OutboundLink>
-{/snippet}
 
 <Header companyName="Angad" platformName="IdP" href="/" />
 

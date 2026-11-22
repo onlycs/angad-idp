@@ -2,10 +2,12 @@ import { zZonedDateTime } from "temporal-zod";
 import z, { type ZodEmail } from "zod";
 import zxcvbn from "zxcvbn";
 
+import { pwned } from "$components/Pwned.svelte";
 import type { Message } from "$components/utility/StatusMessages.svelte";
 
 import type { AnyItem, AnyNonNullableItem, IsMany, Item, ItemProps, Items } from "$lib/form/item";
-import type { MaybePromise } from "$lib/gymnastics";
+import { type MaybePromise } from "$lib/gymnastics";
+import { haveibeenpwned } from "$lib/network.svelte";
 
 export type {
     AnyItem,
@@ -197,5 +199,34 @@ export const f = {
                 placeholder: "••••••••••",
             },
         );
+    },
+
+    async validate_password<
+        T extends {
+            confirm: AnyItem & { tag: "password" };
+            password: AnyItem & { tag: "password" };
+        } & Items,
+    >({ password, confirm }: { password: string; confirm: string }): Promise<FormError<T>[]> {
+        if (password != confirm) {
+            return [
+                {
+                    field: "confirm",
+                    message: "Passwords do not match",
+                },
+            ] as any;
+        }
+
+        if (await haveibeenpwned(password)) {
+            return [
+                {
+                    sourceless: {
+                        title: "Your password was in a data breach",
+                        subtitle: pwned,
+                    },
+                },
+            ];
+        }
+
+        return [];
     },
 };

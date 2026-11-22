@@ -100,6 +100,10 @@
     });
 </script>
 
+<svelte:head>
+    <title>Login | Angad IdP</title>
+</svelte:head>
+
 {#if !token.exists()}
     <Header landing />
 
