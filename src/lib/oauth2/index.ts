@@ -1,12 +1,25 @@
 import { Err, Ok, Result } from "neverthrow";
 
 import { b64url } from "$lib/encoding";
+import { late } from "$lib/gymnastics";
 import { fetch_safe } from "$lib/network.svelte";
 import * as persist from "$lib/oauth2/persists.svelte";
 import { domain_client_id } from "$lib/wasm";
 
 const CLIENT_ID = domain_client_id();
-export const AUTHELIA_URL = "https://auth.dev.angad.page";
+
+let _authelia_url_instance = late<string>();
+export async function authelia_url() {
+    if (_authelia_url_instance.value) return _authelia_url_instance.value;
+    else {
+        const res = (await fetch_safe("/config.json")).map(
+            (it) => (it.json as any).authelia as string,
+        );
+
+        if (res.isOk()) _authelia_url_instance.value = res.value;
+        return res.unwrapOr("https://auth.angad.page");
+    }
+}
 
 export interface UserInfo {
     sub: string;
@@ -43,8 +56,8 @@ async function challenge() {
     };
 }
 
-export function login_redirect(sv: { challenge: string; state: string }): URL {
-    const url = new URL(AUTHELIA_URL + "/api/oidc/authorization");
+export async function login_redirect(sv: { challenge: string; state: string }): Promise<URL> {
+    const url = new URL((await authelia_url()) + "/api/oidc/authorization");
     url.search = new URLSearchParams({
         client_id: CLIENT_ID,
         response_type: "code",
@@ -96,7 +109,7 @@ async function handle_callback(
         return new Err("missing `code` in URL");
     }
 
-    const res1 = await fetch_safe(`${AUTHELIA_URL}/api/oidc/token`, {
+    const res1 = await fetch_safe(`${await authelia_url()}/api/oidc/token`, {
         method: "POST",
         headers: {
             "Content-Type": "application/x-www-form-urlencoded",
@@ -135,7 +148,7 @@ async function handle_callback(
 }
 
 async function userinfo(access_token: string): Promise<Result<UserInfo, string>> {
-    const res = await fetch_safe(`${AUTHELIA_URL}/api/oidc/userinfo`, {
+    const res = await fetch_safe(`${await authelia_url()}/api/oidc/userinfo`, {
         headers: { Authorization: `Bearer ${access_token}` },
     });
 
@@ -162,7 +175,7 @@ interface RefreshResponse {
 }
 
 async function refresh(token: string): Promise<Result<RefreshResponse, string>> {
-    const res = await fetch_safe(`${AUTHELIA_URL}/api/oidc/token`, {
+    const res = await fetch_safe(`${await authelia_url()}/api/oidc/token`, {
         method: "POST",
         headers: {
             "Content-Type": "application/x-www-form-urlencoded",
@@ -189,7 +202,7 @@ async function refresh(token: string): Promise<Result<RefreshResponse, string>> 
 }
 
 async function revoke(token: string, hint: "refresh_token" | "access_token") {
-    await fetch_safe(`${AUTHELIA_URL}/api/oidc/revocation`, {
+    await fetch_safe(`${await authelia_url()}/api/oidc/revocation`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({ token, token_type_hint: hint, client_id: CLIENT_ID }),

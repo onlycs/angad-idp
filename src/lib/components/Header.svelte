@@ -1,5 +1,5 @@
 <script lang="ts">
-    import type { Snippet } from "svelte";
+    import { onMount, type Snippet } from "svelte";
     import { innerWidth } from "svelte/reactivity/window";
 
     import {
@@ -18,7 +18,7 @@
     } from "carbon-components-svelte";
     import { UserAvatar } from "carbon-icons-svelte";
 
-    import { AUTHELIA_URL } from "$lib/oauth2";
+    import { authelia_url } from "$lib/oauth2";
     import type { PersistedToken } from "$lib/oauth2/persists.svelte";
 
     export type HeaderProps = (
@@ -51,7 +51,13 @@
         "/me": "Account Settings",
         "/forgot": "Forgot Password",
     };
-    me[`${AUTHELIA_URL}/settings/two-factor-authentication`] = "Two Factor Authentication";
+
+    onMount(() => {
+        (async () => {
+            me[`${await authelia_url()}/settings/two-factor-authentication`] =
+                "Two Factor Authentication";
+        })();
+    });
 </script>
 
 <svelte:head>

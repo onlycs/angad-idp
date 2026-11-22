@@ -3,11 +3,19 @@ import { onMount } from "svelte";
 import { Err, Ok, Result, ResultAsync } from "neverthrow";
 
 import { sha1 } from "$lib/encoding";
-import { mkmap, type Narrow } from "$lib/gymnastics";
+import { late, type Narrow } from "$lib/gymnastics";
 import type { PersistedToken } from "$lib/oauth2/persists.svelte";
 import { Transit } from "$lib/wasm";
 
-const IDP_URL = "wss://idp.dev.angad.page/api";
+let _idp_url_instance = late<string>();
+export async function idp_url() {
+    if (_idp_url_instance.value) return _idp_url_instance.value;
+    else {
+        const res = (await fetch_safe("/config.json")).map((it) => (it.json as any).api as string);
+        if (res.isOk()) _idp_url_instance.value = res.value;
+        return res.unwrapOr("https://api.idp.angad.page");
+    }
+}
 
 export type AnyTransitError = {
     display(): string;
@@ -92,7 +100,7 @@ export class TransitWrapper {
             _lck = true;
             try {
                 _instance = await new Promise<Transit>((res, rej) => {
-                    Transit.connect(IDP_URL).then(res).catch(rej);
+                    idp_url().then((it) => Transit.connect(it).then(res).catch(rej));
                     setTimeout(() => rej("Manual server 10s timeout"), 10_000);
                 });
                 _lck = false;
