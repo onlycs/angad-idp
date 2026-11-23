@@ -37,6 +37,7 @@ func EnvOrThrow(key string) string {
 
 func Setup() {
 	transit_addr := EnvOrThrow("TRANSIT_ADDRESS")
+	transit_server := EnvOrThrow("TRANSIT_SERVER")
 	env_transit_port := EnvOrThrow("TRANSIT_PORT")
 
 	transit_port, conv_err := strconv.Atoi(env_transit_port)
@@ -49,7 +50,7 @@ func Setup() {
 		Address: transit_addr,
 		Port:    uint16(transit_port),
 		Tls: &transit.TlsOptions{
-			ServerName: "idp.dev.angad.page",
+			ServerName: transit_server,
 			Ca:         transit.RootCaInternal{},
 		},
 	})

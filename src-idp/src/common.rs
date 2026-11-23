@@ -217,7 +217,7 @@ static_env!(
         }
     };
     #[cfg(feature = "docker")]
-    AUTHELIA_CONTAINER  or try {
+    AUTHELIA_CONTAINER or try {
         cfg_select! {
             feature = "k8s" => Ok::<_, snafu::Whatever>(String::default()),
             _ => Err::<(), _>("Missing environment variable `AUTHELIA_CONTAINER`")
