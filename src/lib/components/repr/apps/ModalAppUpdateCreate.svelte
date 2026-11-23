@@ -41,14 +41,8 @@
                   slug: active.slug,
                   name: active.name,
                   url: active.url,
-                  oidc: !active.oidc
-                      ? "without"
-                      : active.oidc.method.tag == "public"
-                        ? "public"
-                        : "normal",
+                  oidc: active.oidc?.method.tag ?? "without",
                   uris: active.oidc?.redirect_uris,
-                  auth_method:
-                      active.oidc?.method.tag == "public" ? undefined : active.oidc?.method.tag,
               } as const)
             : undefined,
     );
@@ -99,27 +93,16 @@
             )
             .add(
                 "oidc",
-                f.dropdown(z.enum(["without", "public", "normal"]), {
-                    kv: {
-                        without: "None",
-                        public: "Public (no client secret)",
-                        normal: "Standard",
-                    },
-                    labelText: "OpenID Connect",
-                }),
-            )
-            .add(
-                "auth_method",
                 f.dropdown(
-                    z
-                        .enum(["client_secret_basic", "client_secret_post"])
-                        .default("client_secret_basic"),
+                    z.enum(["without", "public", "client_secret_basic", "client_secret_post"]),
                     {
                         kv: {
-                            client_secret_basic: "client_secret_basic (HTTP Basic)",
-                            client_secret_post: "client_secret_post (Request body)",
+                            without: "None",
+                            public: "Public (no client secret)",
+                            client_secret_basic: "Client secret (HTTP Basic)",
+                            client_secret_post: "Client secret (POST body)",
                         },
-                        labelText: "Token endpoint auth method",
+                        labelText: "OpenID Connect",
                     },
                 ),
             )
@@ -158,9 +141,6 @@
 
     async function submit(submitted: z.output<typeof form.z>) {
         let res: ApiResult<ApplicationCreateResponse | ApplicationUpdateResponse, AnyTransitError>;
-        const method: ApplicationOidcMethod =
-            submitted.oidc == "public" ? { tag: "public" } : { tag: submitted.auth_method };
-
         if (!!create) {
             const q: ApplicationCreateRequest = {
                 auth: token.into_api(),
@@ -173,7 +153,7 @@
                             ? undefined
                             : {
                                   redirect_uris: submitted.uris,
-                                  method,
+                                  method: { tag: submitted.oidc },
                               },
                 },
             };
@@ -186,6 +166,7 @@
                 if (!active?.oidc) oidc = { tag: "keep" };
                 else oidc = { tag: "remove" };
             } else if (!active?.oidc) {
+                const method: ApplicationOidcMethod = { tag: submitted.oidc };
                 oidc = {
                     tag: "create",
                     value: {
@@ -194,6 +175,7 @@
                     },
                 };
             } else {
+                const method: ApplicationOidcMethod = { tag: submitted.oidc };
                 let auth: OidcMethodUpdate;
 
                 if (active.oidc.method.tag != method.tag) auth = { tag: "set", value: method };
@@ -271,9 +253,6 @@
                     {@render field("name")}
                     {@render field("url")}
                     {@render field("oidc")}
-                    {#if manual.oidc === "normal"}
-                        {@render field("auth_method")}
-                    {/if}
                     {@render field("uris", { enabled: manual.oidc != "without" })}
 
                     {#if manual.oidc != "without"}
@@ -285,7 +264,7 @@
                                 />
                             {/if}
 
-                            {#if manual.oidc === "normal" && active?.oidc && active.oidc.method.tag != "public"}
+                            {#if manual.oidc != "public" && manual.oidc === active?.oidc?.method.tag}
                                 <InputWithButtons
                                     labelText="Client secret"
                                     value={manual.roll_client_secret
