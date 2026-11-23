@@ -117,7 +117,7 @@ pub(crate) async fn authenticate_strict(
         reason: DeniedReason::Invalid,
     })?;
 
-    if common::verify(password.as_bytes(), &hashed.password_hash, hashed.hasher)? {
+    if !common::verify(password.as_bytes(), &hashed.password_hash, hashed.hasher)? {
         return Err(Denied {
             reason: DeniedReason::Invalid,
         }
