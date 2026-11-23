@@ -1,28 +1,26 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT password_hash\n        FROM users\n        WHERE id = $1\n        ",
+  "query": "SELECT email FROM users",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "password_hash",
+        "name": "email",
         "type_info": "Text",
         "origin": {
           "Table": {
             "table": "users",
-            "name": "password_hash"
+            "name": "email"
           }
         }
       }
     ],
     "parameters": {
-      "Left": [
-        "Text"
-      ]
+      "Left": []
     },
     "nullable": [
       false
     ]
   },
-  "hash": "ec022cbf609e7ef356e99e9653cf3f016679d5dc0ae218c10d31d4ce42ec6c23"
+  "hash": "69d418f1b3f410b05375ee17f2b325ad9d1bb8e60e4c2f8d4d0be5d9ea5acd59"
 }

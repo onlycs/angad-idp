@@ -321,7 +321,7 @@ pub(crate) async fn redeem(
     snafu::ensure!(common::USERNAME_RE.is_match(&username), InvalidUsername);
     user::ensure_password_strength(&password, &[&username, &invite.email])?;
 
-    let hash = user::hash_password(&password)?;
+    let hash = common::hash(password.as_bytes())?;
     let uid = cuid2::cuid();
 
     match sqlx::query!(

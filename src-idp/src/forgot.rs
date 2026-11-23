@@ -1,6 +1,5 @@
 use std::sync::{Arc, LazyLock};
 
-use argon2::PasswordHasher;
 use ed25519_dalek::{
     Signature,
     ed25519::signature::{AsyncSigner, AsyncVerifier},
@@ -147,10 +146,7 @@ pub(crate) async fn reset(
 
     user::ensure_password_strength(&password, &[&pl.uid, &pl.email])?;
 
-    let hash = common::argon2()
-        .hash_password(password.as_bytes())
-        .context(InternalErrorContext!(common::ERROR_GENERIC))?
-        .to_string();
+    let hash = common::hash(password.as_bytes())?.to_string();
 
     let res = sqlx::query!(
         r#"

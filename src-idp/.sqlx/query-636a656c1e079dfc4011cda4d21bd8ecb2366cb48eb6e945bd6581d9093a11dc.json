@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT COUNT(*) FROM roles r\n                JOIN users u on u.id = r.uid\n                WHERE\n                    u.email = lower($1) AND\n                    r.application = $2 AND\n                    r.admin\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "636a656c1e079dfc4011cda4d21bd8ecb2366cb48eb6e945bd6581d9093a11dc"
+}

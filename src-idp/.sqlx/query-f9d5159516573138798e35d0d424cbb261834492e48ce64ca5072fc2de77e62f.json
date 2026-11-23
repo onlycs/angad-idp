@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO users (\n                id, username, email, password_hash, hasher\n            )\n            VALUES ($1, $2, $3, $4, 'bcrypt'::hashkind)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f9d5159516573138798e35d0d424cbb261834492e48ce64ca5072fc2de77e62f"
+}

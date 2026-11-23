@@ -10,6 +10,8 @@ import (
 	"github.com/vjeantet/ldapserver"
 )
 
+var last *string = nil
+
 func Bind(w ldapserver.ResponseWriter, m *ldapserver.Message) {
 	clearSession(m)
 
@@ -35,6 +37,7 @@ func Bind(w ldapserver.ResponseWriter, m *ldapserver.Message) {
 
 	if name == "$service" {
 		pass := r.AuthenticationSimple().String()
+		last = &pass
 		res_err := proto.RouteIntegrationAuthorize(Api, proto.IntegrationAuthorizeRequest{
 			Key:   pass,
 			Level: proto.AccessLevelRead,
@@ -51,9 +54,16 @@ func Bind(w ldapserver.ResponseWriter, m *ldapserver.Message) {
 		return
 	}
 
+	if last == nil {
+		res.SetResultCode(ldapserver.LDAPResultInsufficientAccessRights)
+		w.Write(res)
+		return
+	}
+
 	res_err := proto.RouteCheckPassword(Api, proto.CheckPasswordRequest{
 		UnknownIdentity: name,
 		Password:        r.AuthenticationSimple().String(),
+		Token:           *last,
 	})
 
 	if res_err == nil {

@@ -1,0 +1,50 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT password_hash, hasher as \"hasher: HashKind\" FROM users\n        WHERE\n            id = $1 OR\n            username = $1 OR\n            email = lower($1)\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "password_hash",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "password_hash"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "hasher: HashKind",
+        "type_info": {
+          "Custom": {
+            "name": "hashkind",
+            "kind": {
+              "Enum": [
+                "bcrypt",
+                "argon2"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "hasher"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "d7013b334bc14760b692d75b5a55275370111262c5b07dcce9a32f75018fb919"
+}

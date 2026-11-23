@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use argon2::PasswordHasher;
 use idp_proto::{
     app::*,
     auth::{AccessLevel, Authentication},
@@ -138,9 +137,8 @@ pub(crate) async fn create_impl(
 
         let hash = client_secret
             .as_ref()
-            .map(|it| common::argon2().hash_password(it.as_bytes()))
-            .transpose()
-            .context(InternalErrorContext!(via(display), common::ERROR_GENERIC))?
+            .map(|it| common::hash(it.as_bytes()))
+            .transpose()?
             .map(|it| it.to_string());
 
         sqlx::query!(
@@ -313,12 +311,7 @@ pub(crate) async fn update(
 
             let hash = res_client_secret
                 .as_ref()
-                .map(|res| {
-                    common::argon2()
-                        .hash_password(res.as_bytes())
-                        .context(InternalErrorContext!(via(display), common::ERROR_GENERIC))
-                        .map(|hash| hash.to_string())
-                })
+                .map(|res| common::hash(res.as_bytes()).map(|hash| hash.to_string()))
                 .transpose()?;
 
             sqlx::query!(
@@ -370,12 +363,7 @@ pub(crate) async fn update(
 
             let hash = res_client_secret
                 .as_ref()
-                .map(|res| {
-                    common::argon2()
-                        .hash_password(res.as_bytes())
-                        .context(InternalErrorContext!(via(display), common::ERROR_GENERIC))
-                        .map(|hash| hash.to_string())
-                })
+                .map(|res| common::hash(res.as_bytes()).map(|hash| hash.to_string()))
                 .transpose()?;
 
             sqlx::query!(

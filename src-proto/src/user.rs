@@ -16,6 +16,8 @@ pub struct User {
 
 #[record]
 pub struct CheckPasswordRequest {
+    /// Integration key
+    pub token: String,
     /// Username, Email, or ID
     pub unknown_identity: String,
     pub password: String,
@@ -53,7 +55,7 @@ error! {
     SelfDeprivilege("You cannot remove your own domain admin privileges");
     LastDomainAdmin("Cannot delete the last domain admin");
 
-    CheckPasswordError = NoUser | IncorrectPassword;
+    CheckPasswordError = NoUser | IncorrectPassword | Denied;
     UserListError = Denied;
     UserUpdateError = NoUser | InvalidUsername | InvalidEmail | InsecurePassword | UsernameInUse | EmailInUse | NoApplication | SelfDeprivilege | Denied;
     UserDeleteError = NoUser | LastDomainAdmin | Denied;

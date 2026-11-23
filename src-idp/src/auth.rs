@@ -5,7 +5,10 @@ use snafu::{OptionExt, ResultExt};
 use sqlx::PgPool;
 use transit_core::{InternalErrorContext, error};
 
-use crate::{authelia::AutheliaToken, common, user};
+use crate::{
+    authelia::AutheliaToken,
+    common::{self, HashKind},
+};
 
 error! {
     AuthError = Denied;
@@ -99,9 +102,9 @@ pub(crate) async fn authenticate_strict(
 ) -> Result<(), AuthError> {
     let AuthenticateSelfStrict { uid, password } = auth.borrow();
 
-    let hashed = sqlx::query_scalar!(
+    let hashed = sqlx::query!(
         r#"
-        SELECT password_hash
+        SELECT password_hash, hasher as "hasher: HashKind"
         FROM users
         WHERE id = $1
         "#,
@@ -114,7 +117,7 @@ pub(crate) async fn authenticate_strict(
         reason: DeniedReason::Invalid,
     })?;
 
-    if let Err(_incorrect) = user::verify_password(&hashed, password) {
+    if common::verify(password.as_bytes(), &hashed.password_hash, hashed.hasher)? {
         return Err(Denied {
             reason: DeniedReason::Invalid,
         }

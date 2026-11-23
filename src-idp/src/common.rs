@@ -1,6 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
 
-use argon2::Argon2;
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use lettre::{
     Address, AsyncSmtpTransport, Tokio1Executor, message::Mailbox,
     transport::smtp::authentication::Credentials,
@@ -115,7 +115,7 @@ macro_rules! static_env {
     };
 
     // ---- parsed, required ----
-    (@parse [$($seen:tt)*] $(#[$a:meta])* $env:ident as $t:ident via $f:ident $(; $($rest:tt)*)?) => {
+    (@parse [$($seen:tt)*] $(#[$a:meta])* $env:ident as $t:ident via $f:expr $(; $($rest:tt)*)?) => {
         static_env!(@emit $(#[$a])* $env: $t = {
             let v = static_env!(@require $env);
             static_env!(@parse_with $env, $f, v)
@@ -154,8 +154,8 @@ macro_rules! static_env {
             panic!("environment variable `{}`: {e}", stringify!($env))
         })
     };
-    (@parse_with $env:ident, $f:ident, $v:expr) => {
-        $f($v).unwrap_or_else(|e| {
+    (@parse_with $env:ident, $f:expr, $v:expr) => {
+        ($f)($v).unwrap_or_else(|e| {
             panic!("invalid value for `{}`: {e:?}", stringify!($env))
         })
     };
@@ -187,6 +187,11 @@ static_env!(
     SMTP_PASSWORD;
     SMTP_FROM as Address via parse_email or try parse_email(&*SMTP_USERNAME);
     SMTP_SERVER;
+
+    IMAP_USERNAME;
+    IMAP_PASSWORD;
+    IMAP_SERVER;
+
     INITIAL_ADMIN_EMAIL as String via parse_email_str;
 
     FRONTEND_URL as Url via env_parse_url;
@@ -234,12 +239,44 @@ pub fn generate_secret() -> Result<[u8; 32], InternalError> {
     Ok(buf)
 }
 
-pub fn argon2() -> Argon2<'static> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type)]
+#[sqlx(type_name = "hashkind", rename_all = "lowercase")]
+pub enum HashKind {
+    Bcrypt,
+    Argon2,
+}
+
+fn argon2() -> Argon2<'static> {
     Argon2::new(
         argon2::Algorithm::Argon2id,
         argon2::Version::V0x13,
         argon2::Params::DEFAULT,
     )
+}
+
+pub fn hash(value: &[u8]) -> Result<String, InternalError> {
+    Ok(argon2()
+        .hash_password(value)
+        .context(InternalErrorContext!(ERROR_GENERIC))?
+        .to_string())
+}
+
+pub fn verify(
+    password: &[u8],
+    hash: impl AsRef<str>,
+    kind: HashKind,
+) -> Result<bool, InternalError> {
+    match kind {
+        HashKind::Argon2 => Ok(argon2()
+            .verify_password(
+                password,
+                &PasswordHash::new(hash.as_ref()).context(InternalErrorContext!(ERROR_GENERIC))?,
+            )
+            .is_ok()),
+        HashKind::Bcrypt => {
+            bcrypt::verify(password, hash.as_ref()).context(InternalErrorContext!(ERROR_GENERIC))
+        }
+    }
 }
 
 pub fn sha256(bytes: &[u8]) -> Vec<u8> {

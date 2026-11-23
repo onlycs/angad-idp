@@ -2,7 +2,7 @@
 #![allow(unexpected_cfgs)]
 
 use std::{
-    io,
+    env, io,
     net::{AddrParseError, SocketAddr},
     sync::Arc,
 };
@@ -43,6 +43,8 @@ mod auth;
 mod authelia;
 mod common;
 mod forgot;
+mod imap;
+mod import;
 mod integration;
 mod invite;
 mod user;
@@ -179,6 +181,11 @@ async fn setup_domain(pg: &PgPool) -> Result<(), DomainSetupError> {
 
 #[tokio::main]
 async fn main() -> Result<(), StartupError> {
+    if env::args().any(|arg| arg == "import") {
+        import::main().await;
+        return Ok(());
+    }
+
     init_logger();
     dotenvy::dotenv().ok();
     common::env_check_all();
@@ -248,9 +255,13 @@ async fn main() -> Result<(), StartupError> {
         Arc::clone(&router),
     ));
 
-    let (left, right) = tokio::join!(tcp, wss);
-    left.unwrap().unwrap();
-    right.unwrap().unwrap();
+    let imap = tokio::spawn(imap::imap_thread(Arc::clone(&router.state)));
+
+    tokio::select! {
+        r = tcp => r.unwrap().unwrap(),
+        r = wss => r.unwrap().unwrap(),
+        r = imap => r.unwrap().unwrap()
+    }
 
     Ok(())
 }

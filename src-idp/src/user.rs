@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use argon2::{PasswordHasher, PasswordVerifier};
+use common::HashKind;
 use idp_proto::{
     app::Membership,
     auth::{AccessLevel, AuthenticateSelfStrict, Authentication},
@@ -9,7 +9,7 @@ use idp_proto::{
 };
 use snafu::prelude::*;
 use sqlx::PgPool;
-use transit_core::{InternalError, InternalErrorContext, TransitErrorContext};
+use transit_core::{InternalError, InternalErrorContext};
 
 use crate::{
     app::{self, VerifyErrorCast},
@@ -40,29 +40,21 @@ pub(crate) fn ensure_password_strength(
     })
 }
 
-pub(crate) fn hash_password(pass: &str) -> Result<String, InternalError> {
-    common::argon2()
-        .hash_password(pass.as_bytes())
-        .context(InternalErrorContext!(via(display), common::ERROR_GENERIC))
-        .map(|it| it.to_string())
-}
-
-pub(crate) fn verify_password(hash: &str, password: &str) -> Result<(), IncorrectPassword> {
-    common::argon2()
-        .verify_password(password.as_bytes(), hash)
-        .context(TransitErrorContext!(IncorrectPassword))
-}
-
 pub(crate) async fn check_password(
     CheckPasswordRequest {
         unknown_identity: query_unknown,
         password,
+        token,
     }: CheckPasswordRequest,
     pg: Arc<PgPool>,
 ) -> Result<(), CheckPasswordError> {
-    let hash = sqlx::query_scalar!(
+    auth::authenticate_ikey(&token, AccessLevel::Read, &pg)
+        .await
+        .context(AuthErrorCast::<CheckPasswordError>)?;
+
+    let hash = sqlx::query!(
         r#"
-        SELECT password_hash FROM users
+        SELECT password_hash, hasher as "hasher: HashKind" FROM users
         WHERE
             id = $1 OR
             username = $1 OR
@@ -75,7 +67,10 @@ pub(crate) async fn check_password(
     .context(InternalErrorContext!(via(display), common::ERROR_DB))?
     .context(NoUser)?;
 
-    verify_password(&hash, &password)?;
+    snafu::ensure!(
+        common::verify(password.as_bytes(), &hash.password_hash, hash.hasher)?,
+        IncorrectPassword
+    );
 
     Ok(())
 }
@@ -243,7 +238,7 @@ pub(crate) async fn update(req: UserUpdateRequest, pg: Arc<PgPool>) -> Result<()
                 }
 
                 ensure_password_strength(&pw, v.as_slice())?;
-                update_password = Some(hash_password(&pw)?)
+                update_password = Some(common::hash(pw.as_bytes())?)
             }
 
             match sqlx::query!(
