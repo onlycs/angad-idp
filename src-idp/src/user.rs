@@ -132,7 +132,7 @@ pub(crate) async fn update(req: UserUpdateRequest, pg: Arc<PgPool>) -> Result<()
                 .context(AuthErrorCast::<UserUpdateError>)?;
 
             snafu::ensure!(
-                (user_token.is_some_and(|t| t.uid == uid)
+                !(user_token.is_some_and(|t| t.uid == uid)
                     && !memberships.iter().any(Membership::is_domain_admin)),
                 SelfDeprivilege
             );
