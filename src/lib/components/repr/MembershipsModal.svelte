@@ -39,7 +39,7 @@
             tag: "update_other",
             auth: token.into_api(),
             uid: active.id,
-            memberships,
+            memberships: ships,
         });
 
         if (await messages.handle_api(res, token, "Successfully updated memberships"))
@@ -60,5 +60,5 @@
     selectorPrimaryFocus={null}
 >
     <StatusMessages state={messages} />
-    <MembershipsTable {memberships} {apps} is_self={active?.id == token.user.uid} />
+    <MembershipsTable bind:memberships {apps} is_self={active?.id == token.user.uid} />
 </Modal>
