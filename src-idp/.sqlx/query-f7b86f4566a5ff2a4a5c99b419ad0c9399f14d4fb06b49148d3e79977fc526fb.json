@@ -1,0 +1,27 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO applications_oidc (slug, client_secret_hash, redirect_uris, token_endpoint_auth_method)\n            VALUES ($1, $2, $3, $4)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "TextArray",
+        {
+          "Custom": {
+            "name": "tokenauthmethod",
+            "kind": {
+              "Enum": [
+                "client_secret_basic",
+                "client_secret_post"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f7b86f4566a5ff2a4a5c99b419ad0c9399f14d4fb06b49148d3e79977fc526fb"
+}

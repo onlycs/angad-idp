@@ -113,8 +113,10 @@ identity_providers:
         requested_audience_mode: implicit
         # {% if let Some(secret) = oidc.client_secret_hash.as_ref() %}
         client_secret: "{{ secret }}"
+        token_endpoint_auth_method: "{{ oidc.token_endpoint_auth_method.as_str() }}"
         # {% else %}
         public: true
+        token_endpoint_auth_method: "none"
         require_pkce: true
         # {% endif %}
         pkce_challenge_method: S256

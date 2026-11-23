@@ -1,0 +1,57 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            redirect_uris,\n            client_secret_hash IS NULL as \"public!: bool\",\n            token_endpoint_auth_method as \"token_endpoint_auth_method: TokenAuthMethod\"\n        FROM applications_oidc\n        WHERE slug = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "redirect_uris",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "applications_oidc",
+            "name": "redirect_uris"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "public!: bool",
+        "type_info": "Bool",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "token_endpoint_auth_method: TokenAuthMethod",
+        "type_info": {
+          "Custom": {
+            "name": "tokenauthmethod",
+            "kind": {
+              "Enum": [
+                "client_secret_basic",
+                "client_secret_post"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "applications_oidc",
+            "name": "token_endpoint_auth_method"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      null,
+      false
+    ]
+  },
+  "hash": "4af13a035db6e123b6f1331e74fb4fe987fd508db8ca06bd66d8613ec16c87db"
+}

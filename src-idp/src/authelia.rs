@@ -28,7 +28,7 @@ use tracing::{error, info};
 use transit_core::InternalError;
 
 use crate::{
-    app,
+    app::{self, TokenAuthMethod},
     auth::AuthError,
     common::{self, AUTHELIA_URL, FRONTEND_URL, PgRef},
     integration,
@@ -229,6 +229,7 @@ impl snafu::IntoError<AuthError> for AutheliaSnafu {
 struct ApplicationOidc {
     pub redirect_uris: Vec<String>,
     pub client_secret_hash: Option<String>,
+    pub token_endpoint_auth_method: TokenAuthMethod,
 }
 
 struct Application {
@@ -365,7 +366,8 @@ pub(crate) async fn regenerate(pg: impl PgRef) {
                 a.name,
                 JSONB_BUILD_OBJECT(
                     'redirect_uris', o.redirect_uris,
-                    'client_secret_hash', o.client_secret_hash
+                    'client_secret_hash', o.client_secret_hash,
+                    'token_endpoint_auth_method', o.token_endpoint_auth_method
                 ) AS "oidc!: Json<ApplicationOidc>"
             FROM applications a
             JOIN applications_oidc o ON o.slug = a.slug

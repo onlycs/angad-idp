@@ -67,17 +67,31 @@ impl FromStr for Membership {
     }
 }
 
+#[oneof]
+#[derive(Copy, PartialEq, Eq)]
+pub enum ApplicationOidcMethod {
+    Public,
+    ClientSecretBasic,
+    ClientSecretPost,
+}
+
+impl ApplicationOidcMethod {
+    pub fn is_public(self) -> bool {
+        self == Self::Public
+    }
+}
+
 #[record]
 pub struct ApplicationOidcSupplied {
     pub redirect_uris: Vec<String>,
-    pub public: bool,
+    pub method: ApplicationOidcMethod,
 }
 
 #[record]
 pub struct ApplicationOidc {
     pub redirect_uris: Vec<String>,
     pub client_id: String,
-    pub public: bool,
+    pub method: ApplicationOidcMethod,
 }
 
 #[record]
@@ -106,16 +120,15 @@ pub struct ApplicationCreateRequest {
 pub struct ApplicationCreateResponse {
     /// iff app.oidc was provided
     pub client_id: Option<String>,
-    /// iff app.oidc.public = false
+    /// iff app.oidc.method != Public
     pub client_secret: Option<String>,
 }
 
 #[oneof]
 #[derive(PartialEq, Eq)]
-pub enum ApplicationPublicUpdate {
+pub enum OidcMethodUpdate {
     Keep,
-    Set(bool),
-    /// can be used only if public was false
+    Set(ApplicationOidcMethod),
     RollClientSecret,
 }
 
@@ -125,7 +138,7 @@ pub enum ApplicationOidcUpdate {
     Create(ApplicationOidcSupplied),
     Modify {
         redirect_uris: Option<Vec<String>>,
-        public: ApplicationPublicUpdate,
+        auth: OidcMethodUpdate,
     },
     Remove,
 }
@@ -142,7 +155,7 @@ pub struct ApplicationUpdateRequest {
 #[record]
 pub struct ApplicationUpdateResponse {
     pub app: Application,
-    /// iff req.oidc was Create or req.update.public was RollClientSecret
+    /// iff a client secret was generated
     pub client_secret: Option<String>,
 }
 

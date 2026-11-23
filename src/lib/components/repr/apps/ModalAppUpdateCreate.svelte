@@ -17,10 +17,11 @@
         type Application,
         type ApplicationCreateRequest,
         type ApplicationCreateResponse,
+        type ApplicationOidcMethod,
         type ApplicationOidcUpdate,
-        type ApplicationPublicUpdate,
         type ApplicationUpdateRequest,
         type ApplicationUpdateResponse,
+        type OidcMethodUpdate,
     } from "$lib/wasm";
 
     type Props = (
@@ -40,8 +41,14 @@
                   slug: active.slug,
                   name: active.name,
                   url: active.url,
-                  oidc: active.oidc ? (active.oidc.public ? "public" : "normal") : "without",
+                  oidc: !active.oidc
+                      ? "without"
+                      : active.oidc.method.tag == "public"
+                        ? "public"
+                        : "normal",
                   uris: active.oidc?.redirect_uris,
+                  auth_method:
+                      active.oidc?.method.tag == "public" ? undefined : active.oidc?.method.tag,
               } as const)
             : undefined,
     );
@@ -102,6 +109,21 @@
                 }),
             )
             .add(
+                "auth_method",
+                f.dropdown(
+                    z
+                        .enum(["client_secret_basic", "client_secret_post"])
+                        .default("client_secret_basic"),
+                    {
+                        kv: {
+                            client_secret_basic: "client_secret_basic (HTTP Basic)",
+                            client_secret_post: "client_secret_post (Request body)",
+                        },
+                        labelText: "Token endpoint auth method",
+                    },
+                ),
+            )
+            .add(
                 "uris",
                 f.nullable(
                     f.text_many(
@@ -136,6 +158,8 @@
 
     async function submit(submitted: z.output<typeof form.z>) {
         let res: ApiResult<ApplicationCreateResponse | ApplicationUpdateResponse, AnyTransitError>;
+        const method: ApplicationOidcMethod =
+            submitted.oidc == "public" ? { tag: "public" } : { tag: submitted.auth_method };
 
         if (!!create) {
             const q: ApplicationCreateRequest = {
@@ -149,7 +173,7 @@
                             ? undefined
                             : {
                                   redirect_uris: submitted.uris,
-                                  public: submitted.oidc == "public",
+                                  method,
                               },
                 },
             };
@@ -166,30 +190,22 @@
                     tag: "create",
                     value: {
                         redirect_uris: submitted.uris,
-                        public: submitted.oidc == "public",
+                        method,
                     },
                 };
             } else {
-                let pub: ApplicationPublicUpdate;
+                let auth: OidcMethodUpdate;
 
-                if (active.oidc.public == (submitted.oidc == "public"))
-                    pub = {
-                        tag:
-                            submitted.roll_client_secret && !active.oidc.public
-                                ? "roll_client_secret"
-                                : "keep",
-                    };
-                else
-                    pub = {
-                        tag: "set",
-                        value: !active.oidc.public,
-                    };
+                if (active.oidc.method.tag != method.tag) auth = { tag: "set", value: method };
+                else if (submitted.roll_client_secret && method.tag != "public")
+                    auth = { tag: "roll_client_secret" };
+                else auth = { tag: "keep" };
 
                 oidc = {
                     tag: "modify",
                     value: {
                         redirect_uris: submitted.uris,
-                        public: pub,
+                        auth,
                     },
                 };
             }
@@ -255,6 +271,9 @@
                     {@render field("name")}
                     {@render field("url")}
                     {@render field("oidc")}
+                    {#if manual.oidc === "normal"}
+                        {@render field("auth_method")}
+                    {/if}
                     {@render field("uris", { enabled: manual.oidc != "without" })}
 
                     {#if manual.oidc != "without"}
@@ -266,7 +285,7 @@
                                 />
                             {/if}
 
-                            {#if manual.oidc === "normal" && active?.oidc && !active.oidc.public}
+                            {#if manual.oidc === "normal" && active?.oidc && active.oidc.method.tag != "public"}
                                 <InputWithButtons
                                     labelText="Client secret"
                                     value={manual.roll_client_secret

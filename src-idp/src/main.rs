@@ -11,7 +11,8 @@ use chrono::{TimeDelta, Utc};
 use idp_proto::{
     app::{
         ApplicationCreate, ApplicationCreateError, ApplicationDelete, ApplicationList,
-        ApplicationOidcSupplied, ApplicationSupplied, ApplicationUpdate, Membership,
+        ApplicationOidcMethod, ApplicationOidcSupplied, ApplicationSupplied, ApplicationUpdate,
+        Membership,
     },
     forgot::{ForgotCaptcha, ForgotReset, ForgotSendEmail},
     integration::{
@@ -142,7 +143,7 @@ async fn setup_domain(pg: &PgPool) -> Result<(), DomainSetupError> {
             url: format!("{}", *common::FRONTEND_URL),
             oidc: Some(ApplicationOidcSupplied {
                 redirect_uris: vec![format!("{}", *common::FRONTEND_URL)],
-                public: true,
+                method: ApplicationOidcMethod::Public,
             }),
         },
         pg,
