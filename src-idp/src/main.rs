@@ -2,7 +2,7 @@
 #![allow(unexpected_cfgs)]
 
 use std::{
-    env, io,
+    io,
     net::{AddrParseError, SocketAddr},
     sync::Arc,
 };
@@ -44,7 +44,6 @@ mod authelia;
 mod common;
 mod forgot;
 mod imap;
-mod import;
 mod integration;
 mod invite;
 mod user;
@@ -181,11 +180,6 @@ async fn setup_domain(pg: &PgPool) -> Result<(), DomainSetupError> {
 
 #[tokio::main]
 async fn main() -> Result<(), StartupError> {
-    if env::args().any(|arg| arg == "import") {
-        import::main().await;
-        return Ok(());
-    }
-
     init_logger();
     dotenvy::dotenv().ok();
     common::env_check_all();
