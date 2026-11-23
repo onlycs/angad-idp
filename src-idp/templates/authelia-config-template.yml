@@ -114,12 +114,16 @@ identity_providers:
         # {% if let Some(secret) = oidc.client_secret_hash.as_ref() %}
         client_secret: "{{ secret }}"
         token_endpoint_auth_method: "{{ oidc.token_endpoint_auth_method.as_str() }}"
+        # {% if oidc.pkce %}
+        require_pkce: true
+        pkce_challenge_method: S256
+        # {% endif %}
         # {% else %}
         public: true
         token_endpoint_auth_method: "none"
         require_pkce: true
-        # {% endif %}
         pkce_challenge_method: S256
+        # {% endif %}
         scopes: ["openid", "offline_access", "profile", "email", "groups", "uid"]
         grant_types: ["authorization_code", "refresh_token"]
         response_types: ["code"]

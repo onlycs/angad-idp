@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            redirect_uris,\n            client_secret_hash IS NULL as \"public!: bool\",\n            token_endpoint_auth_method as \"token_endpoint_auth_method: TokenAuthMethod\"\n        FROM applications_oidc\n        WHERE slug = $1\n        ",
+  "query": "\n        SELECT\n            redirect_uris,\n            client_secret_hash IS NULL as \"public!: bool\",\n            token_endpoint_auth_method as \"token_endpoint_auth_method: TokenAuthMethod\",\n            pkce\n        FROM applications_oidc\n        WHERE slug = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -40,6 +40,17 @@
             "name": "token_endpoint_auth_method"
           }
         }
+      },
+      {
+        "ordinal": 3,
+        "name": "pkce",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "applications_oidc",
+            "name": "pkce"
+          }
+        }
       }
     ],
     "parameters": {
@@ -50,8 +61,9 @@
     "nullable": [
       false,
       null,
+      false,
       false
     ]
   },
-  "hash": "4af13a035db6e123b6f1331e74fb4fe987fd508db8ca06bd66d8613ec16c87db"
+  "hash": "687b2c4754cf2c7e3a80b639b3fc0c87f272423ced314b7b69e67cd5aa3f6fd1"
 }

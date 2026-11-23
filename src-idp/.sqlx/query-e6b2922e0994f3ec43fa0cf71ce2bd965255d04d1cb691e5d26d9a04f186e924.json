@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n                INSERT INTO applications_oidc (slug, client_secret_hash, redirect_uris, token_endpoint_auth_method)\n                VALUES ($1, $2, $3, $4)\n                ",
+  "query": "\n        INSERT INTO applications_oidc (slug, client_secret_hash, redirect_uris, token_endpoint_auth_method, pkce)\n        VALUES ($1, $2, $3, $4, $5)\n        ",
   "describe": {
     "columns": [],
     "parameters": {
@@ -18,10 +18,11 @@
               ]
             }
           }
-        }
+        },
+        "Bool"
       ]
     },
     "nullable": []
   },
-  "hash": "e31adc08fb6a144d725c40ad2463dc3f6f5e0e11969848130d6c176ffcd4d734"
+  "hash": "e6b2922e0994f3ec43fa0cf71ce2bd965255d04d1cb691e5d26d9a04f186e924"
 }

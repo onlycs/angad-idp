@@ -17,11 +17,11 @@
         type Application,
         type ApplicationCreateRequest,
         type ApplicationCreateResponse,
-        type ApplicationOidcMethod,
+        type ApplicationOidcPrivate,
+        type ApplicationOidcPrivateUpdate,
         type ApplicationOidcUpdate,
         type ApplicationUpdateRequest,
         type ApplicationUpdateResponse,
-        type OidcMethodUpdate,
     } from "$lib/wasm";
 
     type Props = (
@@ -41,7 +41,8 @@
                   slug: active.slug,
                   name: active.name,
                   url: active.url,
-                  oidc: active.oidc?.method.tag ?? "without",
+                  oidc: !active.oidc ? "without" : (active.oidc.private?.method.tag ?? "public"),
+                  pkce: active.oidc?.private && !active.oidc.private.pkce ? "disabled" : "required",
                   uris: active.oidc?.redirect_uris,
               } as const)
             : undefined,
@@ -107,6 +108,16 @@
                 ),
             )
             .add(
+                "pkce",
+                f.dropdown(z.enum(["required", "disabled"]).default("required"), {
+                    kv: {
+                        required: "Required (S256)",
+                        disabled: "Disabled",
+                    },
+                    labelText: "PKCE",
+                }),
+            )
+            .add(
                 "uris",
                 f.nullable(
                     f.text_many(
@@ -141,6 +152,11 @@
 
     async function submit(submitted: z.output<typeof form.z>) {
         let res: ApiResult<ApplicationCreateResponse | ApplicationUpdateResponse, AnyTransitError>;
+        const secret: ApplicationOidcPrivate | undefined =
+            submitted.oidc == "without" || submitted.oidc == "public"
+                ? undefined
+                : { method: { tag: submitted.oidc }, pkce: submitted.pkce == "required" };
+
         if (!!create) {
             const q: ApplicationCreateRequest = {
                 auth: token.into_api(),
@@ -151,10 +167,7 @@
                     oidc:
                         submitted.oidc == "without" || !submitted.uris
                             ? undefined
-                            : {
-                                  redirect_uris: submitted.uris,
-                                  method: { tag: submitted.oidc },
-                              },
+                            : { redirect_uris: submitted.uris, private: secret },
                 },
             };
 
@@ -166,29 +179,30 @@
                 if (!active?.oidc) oidc = { tag: "keep" };
                 else oidc = { tag: "remove" };
             } else if (!active?.oidc) {
-                const method: ApplicationOidcMethod = { tag: submitted.oidc };
                 oidc = {
                     tag: "create",
-                    value: {
-                        redirect_uris: submitted.uris,
-                        method,
-                    },
+                    value: { redirect_uris: submitted.uris, private: secret },
                 };
             } else {
-                const method: ApplicationOidcMethod = { tag: submitted.oidc };
-                let auth: OidcMethodUpdate;
+                const current = active.oidc.private;
+                let update: ApplicationOidcPrivateUpdate;
 
-                if (active.oidc.method.tag != method.tag) auth = { tag: "set", value: method };
-                else if (submitted.roll_client_secret && method.tag != "public")
-                    auth = { tag: "roll_client_secret" };
-                else auth = { tag: "keep" };
+                if (!secret) update = { tag: current ? "remove" : "keep" };
+                else if (!current) update = { tag: "create", value: secret };
+                else
+                    update = {
+                        tag: "modify",
+                        value: {
+                            method:
+                                secret.method.tag != current.method.tag ? secret.method : undefined,
+                            pkce: secret.pkce != current.pkce ? secret.pkce : undefined,
+                            roll: submitted.roll_client_secret,
+                        },
+                    };
 
                 oidc = {
                     tag: "modify",
-                    value: {
-                        redirect_uris: submitted.uris,
-                        auth,
-                    },
+                    value: { redirect_uris: submitted.uris, private: update },
                 };
             }
 
@@ -253,6 +267,9 @@
                     {@render field("name")}
                     {@render field("url")}
                     {@render field("oidc")}
+                    {#if manual.oidc != "without" && manual.oidc != "public"}
+                        {@render field("pkce")}
+                    {/if}
                     {@render field("uris", { enabled: manual.oidc != "without" })}
 
                     {#if manual.oidc != "without"}
@@ -264,7 +281,7 @@
                                 />
                             {/if}
 
-                            {#if manual.oidc != "public" && manual.oidc === active?.oidc?.method.tag}
+                            {#if manual.oidc != "public" && active?.oidc?.private}
                                 <InputWithButtons
                                     labelText="Client secret"
                                     value={manual.roll_client_secret

@@ -230,6 +230,7 @@ struct ApplicationOidc {
     pub redirect_uris: Vec<String>,
     pub client_secret_hash: Option<String>,
     pub token_endpoint_auth_method: TokenAuthMethod,
+    pub pkce: bool,
 }
 
 struct Application {
@@ -367,7 +368,8 @@ pub(crate) async fn regenerate(pg: impl PgRef) {
                 JSONB_BUILD_OBJECT(
                     'redirect_uris', o.redirect_uris,
                     'client_secret_hash', o.client_secret_hash,
-                    'token_endpoint_auth_method', o.token_endpoint_auth_method
+                    'token_endpoint_auth_method', o.token_endpoint_auth_method,
+                    'pkce', o.pkce
                 ) AS "oidc!: Json<ApplicationOidc>"
             FROM applications a
             JOIN applications_oidc o ON o.slug = a.slug

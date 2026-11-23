@@ -68,30 +68,22 @@ impl FromStr for Membership {
 }
 
 #[oneof]
-#[derive(Copy, PartialEq, Eq)]
-pub enum ApplicationOidcMethod {
-    Public,
+pub enum ApplicationOidcAuthMethod {
     ClientSecretBasic,
     ClientSecretPost,
 }
 
-impl ApplicationOidcMethod {
-    pub fn is_public(self) -> bool {
-        self == Self::Public
-    }
-}
-
 #[record]
-pub struct ApplicationOidcSupplied {
-    pub redirect_uris: Vec<String>,
-    pub method: ApplicationOidcMethod,
+pub struct ApplicationOidcPrivate {
+    pub method: ApplicationOidcAuthMethod,
+    pub pkce: bool,
 }
 
 #[record]
 pub struct ApplicationOidc {
     pub redirect_uris: Vec<String>,
     pub client_id: String,
-    pub method: ApplicationOidcMethod,
+    pub private: Option<ApplicationOidcPrivate>,
 }
 
 #[record]
@@ -100,6 +92,12 @@ pub struct Application {
     pub name: String,
     pub url: String,
     pub oidc: Option<ApplicationOidc>,
+}
+
+#[record]
+pub struct ApplicationOidcSupplied {
+    pub redirect_uris: Vec<String>,
+    pub private: Option<ApplicationOidcPrivate>,
 }
 
 #[record]
@@ -120,16 +118,20 @@ pub struct ApplicationCreateRequest {
 pub struct ApplicationCreateResponse {
     /// iff app.oidc was provided
     pub client_id: Option<String>,
-    /// iff app.oidc.method != Public
+    /// iff app.oidc.private was provided
     pub client_secret: Option<String>,
 }
 
 #[oneof]
-#[derive(PartialEq, Eq)]
-pub enum OidcMethodUpdate {
+pub enum ApplicationOidcPrivateUpdate {
     Keep,
-    Set(ApplicationOidcMethod),
-    RollClientSecret,
+    Create(ApplicationOidcPrivate),
+    Modify {
+        method: Option<ApplicationOidcAuthMethod>,
+        pkce: Option<bool>,
+        roll: bool,
+    },
+    Remove,
 }
 
 #[oneof]
@@ -138,7 +140,7 @@ pub enum ApplicationOidcUpdate {
     Create(ApplicationOidcSupplied),
     Modify {
         redirect_uris: Option<Vec<String>>,
-        auth: OidcMethodUpdate,
+        private: ApplicationOidcPrivateUpdate,
     },
     Remove,
 }
@@ -169,6 +171,7 @@ error! {
     NoApplication("Application {slug:?} not found") { slug: String };
     NoApplicationOidc("Application {slug:?} does not have OIDC") { slug: String };
     NotPrivate("Application {slug:?} is public, and does not have a client secret") { slug: String };
+    AlreadyPrivate("Application {slug:?} already has a client secret") { slug: String };
     ApplicationOidcExists("Application {slug:?} already has an OIDC component") { slug: String };
 
     InvalidSlug("Invalid slug");
@@ -181,7 +184,7 @@ error! {
 
     ApplicationCreateError = InvalidSlug | InvalidAppName | InvalidUrl | InvalidRedirectUri | SlugInUse | AppNameInUse | Denied;
     ApplicationListError = Denied;
-    ApplicationUpdateError = NoApplication | NoApplicationOidc | ApplicationOidcExists | NotPrivate | InvalidAppName | InvalidUrl | InvalidRedirectUri | AppNameInUse | ModifyDomain | Denied;
+    ApplicationUpdateError = NoApplication | NoApplicationOidc | ApplicationOidcExists | NotPrivate | AlreadyPrivate | InvalidAppName | InvalidUrl | InvalidRedirectUri | AppNameInUse | ModifyDomain | Denied;
     ApplicationDeleteError = NoApplication | ModifyDomain | Denied;
 }
 

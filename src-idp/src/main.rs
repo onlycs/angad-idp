@@ -1,4 +1,4 @@
-#![feature(option_zip, error_generic_member_access, path_trailing_sep)]
+#![feature(error_generic_member_access, path_trailing_sep)]
 #![allow(unexpected_cfgs)]
 
 use std::{
@@ -11,8 +11,7 @@ use chrono::{TimeDelta, Utc};
 use idp_proto::{
     app::{
         ApplicationCreate, ApplicationCreateError, ApplicationDelete, ApplicationList,
-        ApplicationOidcMethod, ApplicationOidcSupplied, ApplicationSupplied, ApplicationUpdate,
-        Membership,
+        ApplicationOidcSupplied, ApplicationSupplied, ApplicationUpdate, Membership,
     },
     forgot::{ForgotCaptcha, ForgotReset, ForgotSendEmail},
     integration::{
@@ -143,7 +142,7 @@ async fn setup_domain(pg: &PgPool) -> Result<(), DomainSetupError> {
             url: format!("{}", *common::FRONTEND_URL),
             oidc: Some(ApplicationOidcSupplied {
                 redirect_uris: vec![format!("{}", *common::FRONTEND_URL)],
-                method: ApplicationOidcMethod::Public,
+                private: None,
             }),
         },
         pg,

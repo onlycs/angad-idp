@@ -18,7 +18,7 @@ use crate::{
 pub(crate) const DOMAIN_NAME: &str = "Angad IdP";
 pub(crate) use idp_proto::app::DOMAIN_SLUG;
 
-/// Meaningless for public clients (`client_secret_hash IS NULL`)
+/// Meaningless for public clients (`client_secret_hash IS NULL`), as is `pkce`
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, sqlx::Type, serde::Deserialize)]
 #[sqlx(type_name = "tokenauthmethod", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
@@ -35,23 +35,77 @@ impl TokenAuthMethod {
             Self::ClientSecretPost => "client_secret_post",
         }
     }
+}
 
-    /// `None` iff public
-    pub(crate) fn from_proto(value: ApplicationOidcMethod) -> Option<Self> {
+impl From<&ApplicationOidcAuthMethod> for TokenAuthMethod {
+    fn from(value: &ApplicationOidcAuthMethod) -> Self {
         match value {
-            ApplicationOidcMethod::Public => None,
-            ApplicationOidcMethod::ClientSecretBasic => Some(Self::ClientSecretBasic),
-            ApplicationOidcMethod::ClientSecretPost => Some(Self::ClientSecretPost),
+            ApplicationOidcAuthMethod::ClientSecretBasic => Self::ClientSecretBasic,
+            ApplicationOidcAuthMethod::ClientSecretPost => Self::ClientSecretPost,
         }
     }
+}
 
-    pub(crate) fn into_proto(self, public: bool) -> ApplicationOidcMethod {
-        match self {
-            _ if public => ApplicationOidcMethod::Public,
-            Self::ClientSecretBasic => ApplicationOidcMethod::ClientSecretBasic,
-            Self::ClientSecretPost => ApplicationOidcMethod::ClientSecretPost,
+impl From<TokenAuthMethod> for ApplicationOidcAuthMethod {
+    fn from(value: TokenAuthMethod) -> Self {
+        match value {
+            TokenAuthMethod::ClientSecretBasic => Self::ClientSecretBasic,
+            TokenAuthMethod::ClientSecretPost => Self::ClientSecretPost,
         }
     }
+}
+
+fn private_from_row(
+    public: bool,
+    method: TokenAuthMethod,
+    pkce: bool,
+) -> Option<ApplicationOidcPrivate> {
+    (!public).then(|| ApplicationOidcPrivate {
+        method: method.into(),
+        pkce,
+    })
+}
+
+/// Returns the plaintext client secret iff `oidc.private` is set
+async fn insert_oidc<'a>(
+    slug: &str,
+    oidc: &ApplicationOidcSupplied,
+    pg: impl PgExecutor<'a>,
+) -> Result<Option<String>, InternalError> {
+    let client_secret = oidc
+        .private
+        .as_ref()
+        .map(|_| common::generate_secret().map(hex::encode))
+        .transpose()?;
+
+    let hash = client_secret
+        .as_ref()
+        .map(|it| common::hash(it.as_bytes()))
+        .transpose()?;
+
+    let (method, pkce) = oidc
+        .private
+        .as_ref()
+        .map_or((TokenAuthMethod::default(), true), |p| {
+            ((&p.method).into(), p.pkce)
+        });
+
+    sqlx::query!(
+        r#"
+        INSERT INTO applications_oidc (slug, client_secret_hash, redirect_uris, token_endpoint_auth_method, pkce)
+        VALUES ($1, $2, $3, $4, $5)
+        "#,
+        slug,
+        hash,
+        oidc.redirect_uris.as_slice(),
+        method as TokenAuthMethod,
+        pkce,
+    )
+    .execute(pg)
+    .await
+    .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
+
+    Ok(client_secret)
 }
 
 error! {
@@ -165,32 +219,7 @@ pub(crate) async fn create_impl(
     if let Some(oidc) = oidc {
         res.client_id = Some(common::xxh64_hex(&slug));
 
-        let method = TokenAuthMethod::from_proto(oidc.method);
-        let client_secret = if method.is_none() {
-            None
-        } else {
-            Some(hex::encode(common::generate_secret()?))
-        };
-
-        let hash = client_secret
-            .as_ref()
-            .map(|it| common::hash(it.as_bytes()))
-            .transpose()?
-            .map(|it| it.to_string());
-
-        sqlx::query!(
-            r#"
-            INSERT INTO applications_oidc (slug, client_secret_hash, redirect_uris, token_endpoint_auth_method)
-            VALUES ($1, $2, $3, $4)
-            "#,
-            slug,
-            hash,
-            oidc.redirect_uris.as_slice(),
-            method.unwrap_or_default() as TokenAuthMethod,
-        )
-        .execute(&mut *tx)
-        .await
-        .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
+        let client_secret = insert_oidc(&slug, &oidc, &mut *tx).await?;
 
         res.client_secret = client_secret;
     }
@@ -253,7 +282,8 @@ pub(crate) async fn list(
             a.url,
             o.redirect_uris,
             o.client_secret_hash IS NULL AS public,
-            o.token_endpoint_auth_method
+            o.token_endpoint_auth_method,
+            o.pkce
         FROM applications a
         LEFT JOIN applications_oidc o
             ON a.slug = o.slug
@@ -274,6 +304,7 @@ pub(crate) async fn list(
         redirect_uris: Option<Vec<String>>,
         public: Option<bool>,
         token_endpoint_auth_method: Option<TokenAuthMethod>,
+        pkce: Option<bool>,
     }
 
     let apps = qb
@@ -287,14 +318,19 @@ pub(crate) async fn list(
         .map(|a| Application {
             name: a.name,
             url: a.url,
-            oidc: a.redirect_uris.zip(a.public).zip_with(
+            oidc: match (
+                a.redirect_uris,
+                a.public,
                 a.token_endpoint_auth_method,
-                |(uris, public), method| ApplicationOidc {
+                a.pkce,
+            ) {
+                (Some(uris), Some(public), Some(method), Some(pkce)) => Some(ApplicationOidc {
                     redirect_uris: uris,
                     client_id: common::xxh64_hex(&a.slug),
-                    method: method.into_proto(public),
-                },
-            ),
+                    private: private_from_row(public, method, pkce),
+                }),
+                _ => None,
+            },
             slug: a.slug,
         })
         .collect())
@@ -330,7 +366,8 @@ pub(crate) async fn update(
         SELECT
             redirect_uris,
             client_secret_hash IS NULL as "public!: bool",
-            token_endpoint_auth_method as "token_endpoint_auth_method: TokenAuthMethod"
+            token_endpoint_auth_method as "token_endpoint_auth_method: TokenAuthMethod",
+            pkce
         FROM applications_oidc
         WHERE slug = $1
         "#,
@@ -341,7 +378,7 @@ pub(crate) async fn update(
     .context(InternalErrorContext!(via(display), common::ERROR_DB))?
     .map(|it| ApplicationOidcSupplied {
         redirect_uris: it.redirect_uris,
-        method: it.token_endpoint_auth_method.into_proto(it.public),
+        private: private_from_row(it.public, it.token_endpoint_auth_method, it.pkce),
     });
 
     let mut res_client_secret = None;
@@ -352,49 +389,16 @@ pub(crate) async fn update(
         }
 
         ApplicationOidcUpdate::Create(oidc) => {
-            let method = TokenAuthMethod::from_proto(oidc.method);
-            if method.is_some() {
-                res_client_secret = Some(hex::encode(common::generate_secret()?));
-            }
-
-            let hash = res_client_secret
-                .as_ref()
-                .map(|res| common::hash(res.as_bytes()).map(|hash| hash.to_string()))
-                .transpose()?;
-
-            sqlx::query!(
-                r#"
-                INSERT INTO applications_oidc (slug, client_secret_hash, redirect_uris, token_endpoint_auth_method)
-                VALUES ($1, $2, $3, $4)
-                "#,
-                slug,
-                hash,
-                oidc.redirect_uris.as_slice(),
-                method.unwrap_or_default() as TokenAuthMethod,
-            )
-            .execute(&mut *tx)
-            .await
-            .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
-
+            res_client_secret = insert_oidc(&slug, &oidc, &mut *tx).await?;
             res_oidc = Some(oidc)
         }
 
         ApplicationOidcUpdate::Modify {
             redirect_uris,
-            auth,
+            private,
         } => {
             let Some(res_oidc) = res_oidc.as_mut() else {
                 return Err(NoApplicationOidc { slug }.into());
-            };
-
-            let current = res_oidc.method;
-            let (write_secret, method) = match auth {
-                OidcMethodUpdate::Keep => (false, current),
-                OidcMethodUpdate::RollClientSecret if current.is_public() => {
-                    return Err(NotPrivate { slug }.into());
-                }
-                OidcMethodUpdate::RollClientSecret => (true, current),
-                OidcMethodUpdate::Set(to) => (current.is_public() != to.is_public(), to),
             };
 
             if let Some(uri) = redirect_uris
@@ -404,13 +408,36 @@ pub(crate) async fn update(
                 return Err(InvalidRedirectUri { uri: uri.clone() }.into());
             }
 
-            if write_secret && !method.is_public() {
+            let (write_secret, private) = match (private, res_oidc.private.take()) {
+                (ApplicationOidcPrivateUpdate::Keep, current) => (false, current),
+                (ApplicationOidcPrivateUpdate::Create(_), Some(_)) => {
+                    return Err(AlreadyPrivate { slug }.into());
+                }
+                (ApplicationOidcPrivateUpdate::Create(new), None) => (true, Some(new)),
+                (
+                    ApplicationOidcPrivateUpdate::Modify { .. }
+                    | ApplicationOidcPrivateUpdate::Remove,
+                    None,
+                ) => {
+                    return Err(NotPrivate { slug }.into());
+                }
+                (ApplicationOidcPrivateUpdate::Modify { method, pkce, roll }, Some(current)) => (
+                    roll,
+                    Some(ApplicationOidcPrivate {
+                        method: method.unwrap_or(current.method),
+                        pkce: pkce.unwrap_or(current.pkce),
+                    }),
+                ),
+                (ApplicationOidcPrivateUpdate::Remove, Some(_)) => (true, None),
+            };
+
+            if write_secret && private.is_some() {
                 res_client_secret = Some(hex::encode(common::generate_secret()?));
             }
 
             let hash = res_client_secret
                 .as_ref()
-                .map(|res| common::hash(res.as_bytes()).map(|hash| hash.to_string()))
+                .map(|res| common::hash(res.as_bytes()))
                 .transpose()?;
 
             sqlx::query!(
@@ -419,7 +446,8 @@ pub(crate) async fn update(
                 SET
                     redirect_uris = COALESCE($2, redirect_uris),
                     client_secret_hash = CASE WHEN $4 THEN $3 ELSE client_secret_hash END,
-                    token_endpoint_auth_method = COALESCE($5, token_endpoint_auth_method)
+                    token_endpoint_auth_method = COALESCE($5, token_endpoint_auth_method),
+                    pkce = COALESCE($6, pkce)
                 WHERE
                     slug = $1
                 "#,
@@ -427,13 +455,15 @@ pub(crate) async fn update(
                 redirect_uris.as_ref().map(|x| x.as_slice()),
                 hash,
                 write_secret,
-                TokenAuthMethod::from_proto(method) as Option<TokenAuthMethod>,
+                private.as_ref().map(|p| TokenAuthMethod::from(&p.method))
+                    as Option<TokenAuthMethod>,
+                private.as_ref().map(|p| p.pkce),
             )
             .execute(&mut *tx)
             .await
             .context(InternalErrorContext!(via(display), common::ERROR_DB))?;
 
-            res_oidc.method = method;
+            res_oidc.private = private;
 
             if let Some(it) = redirect_uris {
                 res_oidc.redirect_uris = it;
@@ -500,7 +530,7 @@ pub(crate) async fn update(
             oidc: res_oidc.map(|it| ApplicationOidc {
                 redirect_uris: it.redirect_uris,
                 client_id: common::xxh64_hex(&slug),
-                method: it.method,
+                private: it.private,
             }),
             slug,
         },

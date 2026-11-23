@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                a.slug,\n                a.name,\n                JSONB_BUILD_OBJECT(\n                    'redirect_uris', o.redirect_uris,\n                    'client_secret_hash', o.client_secret_hash,\n                    'token_endpoint_auth_method', o.token_endpoint_auth_method\n                ) AS \"oidc!: Json<ApplicationOidc>\"\n            FROM applications a\n            JOIN applications_oidc o ON o.slug = a.slug\n            ",
+  "query": "\n            SELECT\n                a.slug,\n                a.name,\n                JSONB_BUILD_OBJECT(\n                    'redirect_uris', o.redirect_uris,\n                    'client_secret_hash', o.client_secret_hash,\n                    'token_endpoint_auth_method', o.token_endpoint_auth_method,\n                    'pkce', o.pkce\n                ) AS \"oidc!: Json<ApplicationOidc>\"\n            FROM applications a\n            JOIN applications_oidc o ON o.slug = a.slug\n            ",
   "describe": {
     "columns": [
       {
@@ -41,5 +41,5 @@
       null
     ]
   },
-  "hash": "ebcf75e430e75a189481561577a4ed4f4831c12e925cbd90e4ebcb04747f2b8a"
+  "hash": "98997639c28a95617ca792820c49634715723fd0c9af5cd0bef57541c1d004a8"
 }
